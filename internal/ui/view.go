@@ -17,12 +17,14 @@ var (
 func (m Model) View() string {
 	var doc strings.Builder
 
-	doc.WriteString(accentStyle.Render("RYTM // Media Ingestion Engine"));doc.WriteString("\n\n")
+	doc.WriteString(accentStyle.Render("RYTM // Media Ingestion Engine"))
+	doc.WriteString("\n\n")
 
 	switch m.State {
 	case StateInput:
 		doc.WriteString("Search Index / Ingest Stream:\n")
-		doc.WriteString(m.TextInput.View());doc.WriteString("\n\n")
+		doc.WriteString(m.TextInput.View())
+		doc.WriteString("\n\n")
 		doc.WriteString(dimStyle.Render("Press [q] or [Ctrl+C] to exit."))
 
 	case StateSearching:
@@ -35,10 +37,21 @@ func (m Model) View() string {
 			statusSymbol := "⏳"
 			if track.Status == "Done" {
 				statusSymbol = "✓"
+			} else if track.Status == "Failed" || track.Status == "Cancelled" {
+				statusSymbol = "✗"
 			}
-			doc.WriteString(fmt.Sprintf("%s %-30s [%s]\n", statusSymbol, track.Title, track.Status))
+
+			statusText := track.Status
+			if track.Status == "Downloading" || track.Status == "Tagging" {
+				statusText = fmt.Sprintf("%s %d%%", track.Status, track.Progress)
+			} else if track.Status == "Failed" && track.Error != "" {
+				statusText = fmt.Sprintf("Failed: %s", track.Error)
+			}
+
+			doc.WriteString(fmt.Sprintf("%s %-30s [%s]\n", statusSymbol, track.Title, statusText))
 		}
-		doc.WriteString("\n");doc.WriteString(dimStyle.Render("Press [esc] to return to input | [q] to quit"))
+		doc.WriteString("\n")
+		doc.WriteString(dimStyle.Render("Press [esc] to return to input | [q] to quit"))
 	}
 
 	if m.Err != nil {

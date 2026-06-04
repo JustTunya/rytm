@@ -1,17 +1,28 @@
 package ui
 
 import (
+	"encoding/json"
+	"fmt"
+	"net"
 	"time"
+
+	"rytm/internal/ipc"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // Internal message definitions
 type errMsg error
-type searchResultMsg struct{}
-type downloadCompleteMsg struct{ index int }
+type downloadStartedMsg struct {
+	TaskID string
+}
+type statusUpdateMsg struct {
+	Tasks []ipc.TaskStatus
+}
+type tickMsg struct{}
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// FIX 1: Use pointer receiver (*Model) so state updates persist
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
@@ -31,31 +42,51 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.SearchQuery = m.TextInput.Value()
 				m.State = StateSearching
 				m.TextInput.Blur()
-				
-				// Simulate an async network request for now
-				return m, fakeSearchAction()
+				m.Err = nil
+				return m, sendDownloadCmd(m.SearchQuery)
 			}
 		}
 
-	case searchResultMsg:
-		// Move to dashboard and append a mock download task
+	case downloadStartedMsg:
 		m.State = StateDashboard
-		m.Tracks = append(m.Tracks, TrackItem{
-			Title:    m.SearchQuery,
-			Status:   "Downloading",
-			Progress: 0.1,
-		})
-		return m, fakeDownloadProgress(len(m.Tracks) - 1)
+		return m, pollStatusCmd()
 
-	case downloadCompleteMsg:
-		if msg.index < len(m.Tracks) {
-			m.Tracks[msg.index].Status = "Done"
-			m.Tracks[msg.index].Progress = 1.0
+	case statusUpdateMsg:
+		m.Tracks = make([]TrackItem, len(msg.Tasks))
+		anyRunning := false
+		
+		for i, t := range msg.Tasks {
+			m.Tracks[i] = TrackItem{
+				TaskID:   t.TaskID,
+				Title:    t.Query,
+				Status:   t.Status,
+				Progress: t.Progress,
+				Error:    t.Error,
+			}
+			
+			// Use t.Status instead of t.State
+			if t.Status == "Pending" || t.Status == "Downloading" || t.Status == "Tagging" || t.Status == "Queued" {
+				anyRunning = true
+			}
+		}
+		
+		if anyRunning && m.State == StateDashboard {
+			return m, tickPoll()
+		}
+		return m, nil
+
+	case tickMsg:
+		if m.State == StateDashboard {
+			return m, pollStatusCmd()
 		}
 		return m, nil
 
 	case errMsg:
 		m.Err = msg
+		if m.State == StateSearching {
+			m.State = StateInput
+			m.TextInput.Focus()
+		}
 		return m, nil
 	}
 
@@ -66,15 +97,69 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// Visual placeholders for your future yt-dlp backend functionality
-func fakeSearchAction() tea.Cmd {
-	return tea.Tick(time.Second*1, func(t time.Time) tea.Msg {
-		return searchResultMsg{}
-	})
+func sendDownloadCmd(query string) tea.Cmd {
+	return func() tea.Msg {
+		// FIX 3: Use dynamic Windows/Linux socket path
+		conn, err := net.Dial("unix", ipc.SocketPath)
+		if err != nil {
+			return errMsg(fmt.Errorf("failed to connect to rytmd: %w", err))
+		}
+		defer conn.Close()
+
+		req := ipc.Request{
+			Command: ipc.CmdDownload,
+			Query:   query,
+		}
+
+		if err := json.NewEncoder(conn).Encode(req); err != nil {
+			return errMsg(fmt.Errorf("failed to send download request: %w", err))
+		}
+
+		var resp ipc.Response
+		if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+			return errMsg(fmt.Errorf("failed to decode download response: %w", err))
+		}
+
+		if !resp.Success {
+			return errMsg(fmt.Errorf("download command failed: %s", resp.Error))
+		}
+
+		return downloadStartedMsg{TaskID: resp.TaskID}
+	}
 }
 
-func fakeDownloadProgress(index int) tea.Cmd {
-	return tea.Tick(time.Second*2, func(t time.Time) tea.Msg {
-		return downloadCompleteMsg{index: index}
+func pollStatusCmd() tea.Cmd {
+	return func() tea.Msg {
+		// FIX 3: Use dynamic Windows/Linux socket path
+		conn, err := net.Dial("unix", ipc.SocketPath)
+		if err != nil {
+			return errMsg(fmt.Errorf("failed to connect to rytmd: %w", err))
+		}
+		defer conn.Close()
+
+		req := ipc.Request{
+			Command: ipc.CmdStatus,
+		}
+
+		if err := json.NewEncoder(conn).Encode(req); err != nil {
+			return errMsg(fmt.Errorf("failed to send status request: %w", err))
+		}
+
+		var resp ipc.Response
+		if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+			return errMsg(fmt.Errorf("failed to decode status response: %w", err))
+		}
+
+		if !resp.Success {
+			return errMsg(fmt.Errorf("status command failed: %s", resp.Error))
+		}
+
+		return statusUpdateMsg{Tasks: resp.Tasks}
+	}
+}
+
+func tickPoll() tea.Cmd {
+	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+		return tickMsg{}
 	})
 }

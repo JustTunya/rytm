@@ -15,9 +15,11 @@ const (
 )
 
 type TrackItem struct {
+	TaskID   string
 	Title    string
-	Status   string // "Downloading", "Tagging", "Done"
-	Progress float64
+	Status   string // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
+	Progress int    // 0 to 100
+	Error    string
 }
 
 type Model struct {
