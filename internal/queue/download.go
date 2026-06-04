@@ -135,6 +135,11 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		t.SetStatus("Failed", t.Progress, fmt.Sprintf("scanner error: %v", err))
+		return
+	}
+
 	err = cmd.Wait()
 
 	select {
