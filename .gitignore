@@ -1,0 +1,34 @@
+# Build Artifacts & Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+./rytm
+./rytmd
+
+# Downloaded Media (Prevents committing 100MB audio files by mistake)
+*.m4a
+*.flac
+*.opus
+*.webm
+*.mp3
+*.wav
+
+# IPC & Runtime Files
+*.sock
+*.pid
+
+# Go Toolchain
+*.test
+*.out
+vendor/
+
+# VS Code & IDEs
+.vscode/
+.idea/
+*.swp
+
+# OS Temp Files
+.DS_Store
+Thumbs.db
