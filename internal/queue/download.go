@@ -81,15 +81,18 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 
 	queryArg := t.Query
 	if !strings.HasPrefix(t.Query, "http://") && !strings.HasPrefix(t.Query, "https://") {
-		queryArg = "ytsearch:" + t.Query
+		cleanQuery := strings.TrimSpace(t.Query)
+		queryArg = fmt.Sprintf("ytsearch1:%s \"Provided to YouTube\"", cleanQuery)
 	}
 
 	args := []string{
-		"-I", "1",
+		"--cookies", "cookies.txt",
 		queryArg,
 		"-x",
-		"-f", "bestaudio/best",
+		"-f", "bestaudio[ext=webm]/bestaudio",
 		"--audio-format", "m4a",
+		"--audio-quality", "0",
+		"--postprocessor-args", "ExtractAudio:-af volume=-10dB",
 		"--embed-metadata",
 		"--embed-thumbnail",
 		"-o", "%(artist)s - %(title)s.%(ext)s",
