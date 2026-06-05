@@ -11,7 +11,10 @@ var (
 	// Minimalist styling components matching a crisp terminal look
 	accentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true)
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+	greyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
 	borderStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("#333333")).Padding(1, 2)
+
+	spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 )
 
 func (m Model) View() string {
@@ -48,7 +51,24 @@ func (m Model) View() string {
 				statusText = fmt.Sprintf("Failed: %s", track.Error)
 			}
 
-			doc.WriteString(fmt.Sprintf("%s %-30s [%s]\n", statusSymbol, track.Title, statusText))
+			isPendingOrRunning := track.Status == "Pending" || track.Status == "Downloading" || track.Status == "Fingerprinting" || track.Status == "Tagging" || track.Status == "Queued"
+
+			if isPendingOrRunning && (track.Title == "" || track.Artist == "") {
+				spinnerChar := spinnerFrames[m.FrameIndex%len(spinnerFrames)]
+				doc.WriteString(fmt.Sprintf("%s Searching for %s... [%s]\n", spinnerChar, track.Query, statusText))
+			} else {
+				title := track.Title
+				if title == "" {
+					title = track.Query
+				}
+				doc.WriteString(fmt.Sprintf("%s %-30s [%s]\n", statusSymbol, title, statusText))
+				
+				artist := track.Artist
+				if artist == "" {
+					artist = "Unknown Artist"
+				}
+				doc.WriteString(fmt.Sprintf("  %s\n", greyStyle.Render(artist)))
+			}
 		}
 		doc.WriteString("\n")
 		doc.WriteString(dimStyle.Render("Press [esc] to return to input | [q] to quit"))

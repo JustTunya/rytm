@@ -16,7 +16,9 @@ const (
 
 type TrackItem struct {
 	TaskID   string
+	Query    string
 	Title    string
+	Artist   string
 	Status   string // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
 	Progress int    // 0 to 100
 	Error    string
@@ -28,6 +30,8 @@ type Model struct {
 	Tracks      []TrackItem
 	SearchQuery string
 	Err         error
+	FrameIndex  int
+	TickCount   int
 }
 
 func InitialModel() Model {

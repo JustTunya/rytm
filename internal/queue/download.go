@@ -19,6 +19,7 @@ type Task struct {
 	ID       string
 	Query    string
 	Title    string
+	Artist   string
 	Status   string // "Pending", "Downloading", "Fingerprinting", "Tagging", "Done", "Failed", "Cancelled"
 	Progress int    // 0 to 100
 	Error    string
@@ -34,6 +35,7 @@ func (t *Task) GetStatus() ipc.TaskStatus {
 		TaskID:   t.ID,
 		Query:    t.Query,
 		Title:    t.Title,
+		Artist:   t.Artist,
 		Status:   t.Status,
 		Progress: t.Progress,
 		Error:    t.Error,
@@ -52,6 +54,12 @@ func (t *Task) SetTitle(title string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.Title = title
+}
+
+func (t *Task) SetArtist(artist string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.Artist = artist
 }
 
 type Manager struct {
@@ -75,7 +83,8 @@ func (m *Manager) Submit(query string) string {
 	task := &Task{
 		ID:       taskID,
 		Query:    query,
-		Title:    query,
+		Title:    "",
+		Artist:   "",
 		Status:   "Pending",
 		Progress: 0,
 		CancelFn: cancel,
@@ -127,6 +136,13 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 			// Non-fatal: degrade gracefully — fall back to video title parsing.
 			meta = ytMeta
 		}
+	}
+
+	if meta.Title != "" {
+		t.SetTitle(meta.Title)
+	}
+	if meta.Artist != "" {
+		t.SetArtist(meta.Artist)
 	}
 
 	// Write cover art bytes to a temp file so FFmpeg can open it as a second
@@ -226,10 +242,12 @@ func (m *Manager) downloadRaw(ctx context.Context, t *Task) (string, TrackMeta, 
 		case reTitle.MatchString(line):
 			if m := reTitle.FindStringSubmatch(line); len(m) > 1 {
 				videoTitle = strings.TrimSpace(m[1])
+				t.SetTitle(videoTitle)
 			}
 		case reArtist.MatchString(line):
 			if m := reArtist.FindStringSubmatch(line); len(m) > 1 {
 				ytArtist = strings.TrimSpace(m[1])
+				t.SetArtist(ytArtist)
 			}
 		case reAlbum.MatchString(line):
 			if m := reAlbum.FindStringSubmatch(line); len(m) > 1 {
@@ -238,6 +256,7 @@ func (m *Manager) downloadRaw(ctx context.Context, t *Task) (string, TrackMeta, 
 		case reTrack.MatchString(line):
 			if m := reTrack.FindStringSubmatch(line); len(m) > 1 {
 				ytTrack = strings.TrimSpace(m[1])
+				t.SetTitle(ytTrack)
 			}
 		case reYear.MatchString(line):
 			if m := reYear.FindStringSubmatch(line); len(m) > 1 {
@@ -292,6 +311,13 @@ func (m *Manager) downloadRaw(ctx context.Context, t *Task) (string, TrackMeta, 
 		}
 	}
 
+	if ytMeta.Title != "" {
+		t.SetTitle(ytMeta.Title)
+	}
+	if ytMeta.Artist != "" {
+		t.SetArtist(ytMeta.Artist)
+	}
+
 	// Glob for the downloaded file. yt-dlp may leave .part files on partial
 	// downloads, so we only accept known audio container extensions.
 	pattern := filepath.Join(os.TempDir(), fmt.Sprintf("rytm_%s.*", t.ID))
@@ -332,22 +358,34 @@ func (m *Manager) transcodeWithMeta(ctx context.Context, rawPath, coverPath stri
 	var sb strings.Builder
 	sb.WriteString(";FFMETADATA1\r\n")
 	if meta.Title != "" {
-		sb.WriteString("title=" + escapeMetadataValue(meta.Title) + "\r\n")
+		sb.WriteString("title=");
+		sb.WriteString(escapeMetadataValue(meta.Title));
+		sb.WriteString("\r\n")
 	}
 	if meta.Artist != "" {
-		sb.WriteString("artist=" + escapeMetadataValue(meta.Artist) + "\r\n")
+		sb.WriteString("artist=");
+		sb.WriteString(escapeMetadataValue(meta.Artist));
+		sb.WriteString("\r\n")
 	}
 	if meta.Album != "" {
-		sb.WriteString("album=" + escapeMetadataValue(meta.Album) + "\r\n")
+		sb.WriteString("album=");
+		sb.WriteString(escapeMetadataValue(meta.Album));
+		sb.WriteString("\r\n")
 	}
 	if meta.Date != "" {
-		sb.WriteString("date=" + escapeMetadataValue(meta.Date) + "\r\n")
+		sb.WriteString("date=");
+		sb.WriteString(escapeMetadataValue(meta.Date));
+		sb.WriteString("\r\n")
 	}
 	if meta.TrackNum != "" {
-		sb.WriteString("track=" + escapeMetadataValue(meta.TrackNum) + "\r\n")
+		sb.WriteString("track=");
+		sb.WriteString(escapeMetadataValue(meta.TrackNum));
+		sb.WriteString("\r\n")
 	}
 	if meta.Genre != "" {
-		sb.WriteString("genre=" + escapeMetadataValue(meta.Genre) + "\r\n")
+		sb.WriteString("genre=");
+		sb.WriteString(escapeMetadataValue(meta.Genre));
+		sb.WriteString("\r\n")
 	}
 
 	// Write metadata file to temp dir

@@ -25,6 +25,7 @@ type TaskStatus struct {
 	TaskID   string `json:"task_id"`
 	Query    string `json:"query"`
 	Title    string `json:"title"`
+	Artist   string `json:"artist"`
 	Status   string `json:"status"`   // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
 	Progress int    `json:"progress"` // 0 to 100
 	Error    string `json:"error,omitempty"`

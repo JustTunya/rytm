@@ -54,11 +54,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case statusUpdateMsg:
 		m.Tracks = make([]TrackItem, len(msg.Tasks))
 		anyRunning := false
-		
 		for i, t := range msg.Tasks {
 			m.Tracks[i] = TrackItem{
 				TaskID:   t.TaskID,
-				Title:    t.Query,
+				Query:    t.Query,
+				Title:    t.Title,
+				Artist:   t.Artist,
 				Status:   t.Status,
 				Progress: t.Progress,
 				Error:    t.Error,
@@ -76,8 +77,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
+		m.FrameIndex = (m.FrameIndex + 1) % 10
 		if m.State == StateDashboard {
-			return m, pollStatusCmd()
+			m.TickCount++
+			if m.TickCount >= 4 {
+				m.TickCount = 0
+				return m, pollStatusCmd()
+			}
+			return m, tickPoll()
 		}
 		return m, nil
 
@@ -159,7 +166,7 @@ func pollStatusCmd() tea.Cmd {
 }
 
 func tickPoll() tea.Cmd {
-	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+	return tea.Tick(150*time.Millisecond, func(t time.Time) tea.Msg {
 		return tickMsg{}
 	})
 }
