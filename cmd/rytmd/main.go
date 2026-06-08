@@ -15,7 +15,10 @@ import (
 func main() {
 	var binPaths []string
 	if execPath, err := os.Executable(); err == nil {
-		binPaths = append(binPaths, filepath.Join(filepath.Dir(execPath), "bin"))
+		binDir := filepath.Dir(execPath)
+		binPaths = append(binPaths, binDir)
+		
+		os.Chdir(filepath.Dir(binDir))
 	}
 	binPaths = append(binPaths, filepath.Join(".", "bin"))
 
@@ -50,7 +53,6 @@ func main() {
 	manager := queue.NewManager()
 	defer manager.Shutdown()
 
-	// Signal channel for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 

@@ -38,8 +38,8 @@ func InitialModel() Model {
 	ti := textinput.New()
 	ti.Placeholder = "Paste YouTube URL or type song name..."
 	ti.Focus()
-	ti.CharLimit = 156
-	ti.Width = 50
+	ti.CharLimit = 1024
+	ti.Width = 100
 
 	return Model{
 		State:     StateInput,

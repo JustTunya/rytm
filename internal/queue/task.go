@@ -7,16 +7,19 @@ import (
 	"sync"
 )
 type Task struct {
-	ID       string
-	Query    string
-	Title    string
-	Artist   string
-	Status   string // "Pending", "Downloading", "Fingerprinting", "Tagging", "Done", "Failed", "Cancelled"
-	Progress int    // 0 to 100
-	Error    string
-	Cmd      *exec.Cmd
-	CancelFn context.CancelFunc
-	mu       sync.RWMutex
+	ID         string
+	Query      string
+	Title      string
+	Artist     string
+	Status     string // "Queued", "Pending", "Downloading", "Fingerprinting", "Tagging", "Done", "Failed", "Cancelled"
+	Progress   int    // 0 to 100
+	Error      string
+	OutputDir        string
+	IsPlaylist       bool
+	PlaylistTrackNum int
+	Cmd              *exec.Cmd
+	CancelFn         context.CancelFunc
+	mu               sync.RWMutex
 }
 func (t *Task) GetStatus() ipc.TaskStatus {
 	t.mu.RLock()

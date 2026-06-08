@@ -2,37 +2,68 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"rytm/internal/ipc"
+	"strconv"
+	"strings"
 	"sync"
+
+	"rytm/internal/ipc"
 )
 type Manager struct {
-	mu    sync.RWMutex
-	tasks map[string]*Task
+	mu       sync.RWMutex
+	tasks    map[string]*Task
+	trackSem chan struct{}
 }
 func NewManager() *Manager {
 	return &Manager{
-		tasks: make(map[string]*Task),
+		tasks:    make(map[string]*Task),
+		trackSem: make(chan struct{}, 3),
 	}
 }
+func isPlaylistURL(query string) bool {
+	if !strings.HasPrefix(query, "http://") && !strings.HasPrefix(query, "https://") {
+		return false
+	}
+	u, err := url.Parse(query)
+	if err != nil {
+		return false
+	}
+	if strings.Contains(u.Path, "/playlist") && u.Query().Get("list") != "" {
+		return true
+	}
+	if strings.Contains(u.Path, "/album/") {
+		return true
+	}
+	return false
+}
+
 func (m *Manager) Submit(query string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	taskID := fmt.Sprintf("task_%d", len(m.tasks)+1)
 	ctx, cancel := context.WithCancel(context.Background())
 	task := &Task{
-		ID:       taskID,
-		Query:    query,
-		Title:    "",
-		Artist:   "",
-		Status:   "Pending",
-		Progress: 0,
-		CancelFn: cancel,
+		ID:         taskID,
+		Query:      query,
+		Title:      "",
+		Artist:     "",
+		Status:     "Pending",
+		Progress:   0,
+		IsPlaylist: isPlaylistURL(query),
+		CancelFn:   cancel,
 	}
 	m.tasks[taskID] = task
-	go m.runTask(ctx, task)
+
+	if task.IsPlaylist {
+		go m.runPlaylistTask(ctx, task)
+	} else {
+		go m.runTask(ctx, task)
+	}
 	return taskID
 }
 // runTask is the two-phase pipeline:
@@ -42,6 +73,15 @@ func (m *Manager) Submit(query string) string {
 //  3. transcodeWithMeta — FFmpeg converts to AAC/m4a and injects all tags in
 //     the same pass where the volume filter is applied.
 func (m *Manager) runTask(ctx context.Context, t *Task) {
+	t.SetStatus("Queued", 0, "")
+	select {
+	case m.trackSem <- struct{}{}:
+		defer func() { <-m.trackSem }()
+	case <-ctx.Done():
+		t.SetStatus("Cancelled", 0, "Cancelled while queued")
+		return
+	}
+
 	t.SetStatus("Downloading", 0, "")
 	// ── Phase 1: Raw audio download ──────────────────────────────────────────
 	rawPath, ytMeta, videoTitle, err := m.downloadRaw(ctx, t)
@@ -73,6 +113,9 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 			meta = ytMeta
 		}
 	}
+	if t.PlaylistTrackNum > 0 {
+		meta.TrackNum = strconv.Itoa(t.PlaylistTrackNum)
+	}
 	if meta.Title != "" {
 		t.SetTitle(meta.Title)
 	}
@@ -96,6 +139,12 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 	// ── Phase 3: Single-pass FFmpeg transcode ────────────────────────────────
 	t.SetStatus("Tagging", 99, "")
 	outName := buildOutputName(meta, videoTitle, t.Query)
+	
+	if t.OutputDir != "" {
+		if err := os.MkdirAll(t.OutputDir, 0755); err == nil {
+			outName = filepath.Join(t.OutputDir, outName)
+		}
+	}
 	if err := m.transcodeWithMeta(ctx, rawPath, coverPath, meta, outName, t.ID); err != nil {
 		select {
 		case <-ctx.Done():
@@ -146,6 +195,70 @@ func (m *Manager) GetAllTasks() []ipc.TaskStatus {
 	}
 	return statuses
 }
+func (m *Manager) runPlaylistTask(ctx context.Context, t *Task) {
+	t.SetStatus("Fetching Playlist", 0, "")
+	
+	cmd := exec.CommandContext(ctx, "yt-dlp", "-J", "--flat-playlist", t.Query)
+	out, err := cmd.Output()
+	if err != nil {
+		t.SetStatus("Failed", 0, fmt.Sprintf("fetch playlist: %v", err))
+		return
+	}
+
+	var playlistData struct {
+		Title   string `json:"title"`
+		Entries []struct {
+			ID    string `json:"id"`
+			URL   string `json:"url"`
+			Title string `json:"title"`
+		} `json:"entries"`
+	}
+
+	if err := json.Unmarshal(out, &playlistData); err != nil {
+		t.SetStatus("Failed", 0, fmt.Sprintf("parse playlist json: %v", err))
+		return
+	}
+
+	playlistTitle := sanitizeFilename(playlistData.Title)
+	if playlistTitle == "" {
+		playlistTitle = "Playlist"
+	}
+
+	t.SetTitle(playlistTitle)
+	t.SetStatus("Done", 100, "")
+
+	for i, entry := range playlistData.Entries {
+		entryURL := entry.URL
+		if entryURL == "" && entry.ID != "" {
+			entryURL = "https://www.youtube.com/watch?v=" + entry.ID
+		}
+		if entryURL != "" {
+			m.SubmitTrack(entryURL, playlistTitle, i+1)
+		}
+	}
+}
+
+func (m *Manager) SubmitTrack(query, outputDir string, trackNum int) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	taskID := fmt.Sprintf("task_%d", len(m.tasks)+1)
+	ctx, cancel := context.WithCancel(context.Background())
+	task := &Task{
+		ID:               taskID,
+		Query:            query,
+		Title:            "",
+		Artist:           "",
+		Status:           "Pending",
+		Progress:         0,
+		OutputDir:        outputDir,
+		PlaylistTrackNum: trackNum,
+		CancelFn:         cancel,
+	}
+	m.tasks[taskID] = task
+	go m.runTask(ctx, task)
+	return taskID
+}
+
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

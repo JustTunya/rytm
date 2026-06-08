@@ -31,6 +31,7 @@ func (m *Manager) downloadRaw(ctx context.Context, t *Task) (string, TrackMeta, 
 	args := []string{
 		"--cookies", "cookies.txt",
 		queryArg,
+		"--no-playlist",
 		"-f", "bestaudio[ext=webm]/bestaudio/bestaudio",
 		"--no-embed-metadata",
 		"--no-embed-thumbnail",
