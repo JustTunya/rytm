@@ -18,7 +18,7 @@ const (
 	acoustIDEndpoint = "https://api.acoustid.org/v2/lookup"
 	mbEndpoint       = "https://musicbrainz.org/ws/2"
 	coverArtEndpoint = "https://coverartarchive.org/release"
-	userAgent = "rytm/1.0 (https://github.com/JustTunya/rytm)"
+	userAgent 			 = "rytm/1.0 (https://github.com/JustTunya/rytm)"
 )
 
 var fpHTTPClient = &http.Client{Timeout: 30 * time.Second}
