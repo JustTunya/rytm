@@ -8,13 +8,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
 // Precompile regexes for yt-dlp stdout scanning to optimize performance and avoid allocation overhead.
 var (
-	reProgress = regexp.MustCompile(`\[download\]\s+([0-9.]+)%`)
 	rePostProc = regexp.MustCompile(`\[(ExtractAudio|Metadata|Thumbnails|FixupM4a)\]`)
 	reTitle    = regexp.MustCompile(`^rytm_title:(.*)$`)
 	reArtist   = regexp.MustCompile(`^rytm_artist:(.*)$`)
@@ -88,18 +86,8 @@ func (m *Manager) downloadRaw(ctx context.Context, t *Task) (string, TrackMeta, 
 			if m := reYear.FindStringSubmatch(line); len(m) > 1 {
 				ytYear = strings.TrimSpace(m[1])
 			}
-		case reProgress.MatchString(line):
-			if m := reProgress.FindStringSubmatch(line); len(m) > 1 {
-				if pct, err := strconv.ParseFloat(m[1], 64); err == nil {
-					progress := int(pct)
-					if progress >= 100 {
-						progress = 99
-					}
-					t.SetStatus("Downloading", progress, "")
-				}
-			}
 		case rePostProc.MatchString(line):
-			t.SetStatus("Downloading", 99, "")
+			t.SetStatus("Downloading", "")
 		}
 	}
 	if scanErr := scanner.Err(); scanErr != nil {

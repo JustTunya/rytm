@@ -47,8 +47,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.State = StateSearching
 				m.TextInput.Blur()
 				m.Err = nil
+				m.ScrollOffset = 0 // Reset scroll offset on new search
 				return m, sendDownloadCmd(m.SearchQuery)
 			}
+		case "up":
+			if m.State == StateDashboard && m.ScrollOffset > 0 {
+				m.ScrollOffset--
+			}
+			return m, nil
+		case "down":
+			if m.State == StateDashboard {
+				m.ScrollOffset++
+			}
+			return m, nil
 		}
 
 	case downloadStartedMsg:
@@ -60,17 +71,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		anyRunning := false
 		for i, t := range msg.Tasks {
 			m.Tracks[i] = TrackItem{
-				TaskID:   t.TaskID,
-				Query:    t.Query,
-				Title:    t.Title,
-				Artist:   t.Artist,
-				Status:   t.Status,
-				Progress: t.Progress,
-				Error:    t.Error,
+				TaskID:           t.TaskID,
+				Query:            t.Query,
+				Title:            t.Title,
+				Artist:           t.Artist,
+				Album:            t.Album,
+				Status:           t.Status,
+				Error:            t.Error,
+				IsPlaylist:       t.IsPlaylist,
+				PlaylistName:     t.PlaylistName,
+				PlaylistTrackNum: t.PlaylistTrackNum,
 			}
 			
 			// Use t.Status instead of t.State
-			if t.Status == "Pending" || t.Status == "Downloading" || t.Status == "Fingerprinting" || t.Status == "Tagging" || t.Status == "Queued" {
+			if t.Status == "Pending" || t.Status == "Downloading" || t.Status == "Fingerprinting" || t.Status == "Tagging" || t.Status == "Queued" || t.Status == "Fetching Playlist" {
 				anyRunning = true
 			}
 		}

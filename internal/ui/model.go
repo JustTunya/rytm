@@ -15,13 +15,16 @@ const (
 )
 
 type TrackItem struct {
-	TaskID   string
-	Query    string
-	Title    string
-	Artist   string
-	Status   string // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
-	Progress int    // 0 to 100
-	Error    string
+	TaskID           string
+	Query            string
+	Title            string
+	Artist           string
+	Album            string
+	Status           string // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
+	Error            string
+	IsPlaylist       bool
+	PlaylistName     string
+	PlaylistTrackNum int
 }
 
 type Model struct {
@@ -32,6 +35,7 @@ type Model struct {
 	Err         error
 	FrameIndex  int
 	TickCount   int
+	ScrollOffset int
 }
 
 func InitialModel() Model {

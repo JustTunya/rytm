@@ -53,7 +53,6 @@ func (m *Manager) Submit(query string) string {
 		Title:      "",
 		Artist:     "",
 		Status:     "Pending",
-		Progress:   0,
 		IsPlaylist: isPlaylistURL(query),
 		CancelFn:   cancel,
 	}
@@ -73,24 +72,24 @@ func (m *Manager) Submit(query string) string {
 //  3. transcodeWithMeta — FFmpeg converts to AAC/m4a and injects all tags in
 //     the same pass where the volume filter is applied.
 func (m *Manager) runTask(ctx context.Context, t *Task) {
-	t.SetStatus("Queued", 0, "")
+	t.SetStatus("Queued", "")
 	select {
 	case m.trackSem <- struct{}{}:
 		defer func() { <-m.trackSem }()
 	case <-ctx.Done():
-		t.SetStatus("Cancelled", 0, "Cancelled while queued")
+		t.SetStatus("Cancelled", "Cancelled while queued")
 		return
 	}
 
-	t.SetStatus("Downloading", 0, "")
+	t.SetStatus("Downloading", "")
 	// ── Phase 1: Raw audio download ──────────────────────────────────────────
 	rawPath, ytMeta, videoTitle, err := m.downloadRaw(ctx, t)
 	if err != nil {
 		select {
 		case <-ctx.Done():
-			t.SetStatus("Cancelled", t.Progress, "Download cancelled by user")
+			t.SetStatus("Cancelled", "Download cancelled by user")
 		default:
-			t.SetStatus("Failed", t.Progress, fmt.Sprintf("download: %v", err))
+			t.SetStatus("Failed", fmt.Sprintf("download: %v", err))
 		}
 		return
 	}
@@ -101,12 +100,12 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 		defer os.Remove(thumbnailPath)
 	}
 	// ── Phase 2: Acoustic fingerprinting ────────────────────────────────────
-	t.SetStatus("Fingerprinting", 99, "")
+	t.SetStatus("Fingerprinting", "")
 	meta, fpErr := FetchMetadata(ctx, rawPath)
 	if fpErr != nil {
 		select {
 		case <-ctx.Done():
-			t.SetStatus("Cancelled", 99, "Fingerprinting cancelled by user")
+			t.SetStatus("Cancelled", "Fingerprinting cancelled by user")
 			return
 		default:
 			// Non-fatal: degrade gracefully — fall back to video title parsing.
@@ -121,6 +120,9 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 	}
 	if meta.Artist != "" {
 		t.SetArtist(meta.Artist)
+	}
+	if meta.Album != "" {
+		t.SetAlbum(meta.Album)
 	}
 	// Write cover art bytes to a temp file so FFmpeg can open it as a second
 	// input stream. The file is cleaned up regardless of transcode outcome.
@@ -137,7 +139,7 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 		coverPath = thumbnailPath
 	}
 	// ── Phase 3: Single-pass FFmpeg transcode ────────────────────────────────
-	t.SetStatus("Tagging", 99, "")
+	t.SetStatus("Tagging", "")
 	outName := buildOutputName(meta, videoTitle, t.Query)
 	
 	if t.OutputDir != "" {
@@ -148,13 +150,13 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 	if err := m.transcodeWithMeta(ctx, rawPath, coverPath, meta, outName, t.ID); err != nil {
 		select {
 		case <-ctx.Done():
-			t.SetStatus("Cancelled", 99, "Transcode cancelled by user")
+			t.SetStatus("Cancelled", "Transcode cancelled by user")
 		default:
-			t.SetStatus("Failed", 99, fmt.Sprintf("transcode: %v", err))
+			t.SetStatus("Failed", fmt.Sprintf("transcode: %v", err))
 		}
 		return
 	}
-	t.SetStatus("Done", 100, "")
+	t.SetStatus("Done", "")
 }
 func (m *Manager) Cancel(taskID string) bool {
 	m.mu.RLock()
@@ -196,12 +198,12 @@ func (m *Manager) GetAllTasks() []ipc.TaskStatus {
 	return statuses
 }
 func (m *Manager) runPlaylistTask(ctx context.Context, t *Task) {
-	t.SetStatus("Fetching Playlist", 0, "")
+	t.SetStatus("Fetching Playlist", "")
 	
 	cmd := exec.CommandContext(ctx, "yt-dlp", "-J", "--flat-playlist", t.Query)
 	out, err := cmd.Output()
 	if err != nil {
-		t.SetStatus("Failed", 0, fmt.Sprintf("fetch playlist: %v", err))
+		t.SetStatus("Failed", fmt.Sprintf("fetch playlist: %v", err))
 		return
 	}
 
@@ -215,7 +217,7 @@ func (m *Manager) runPlaylistTask(ctx context.Context, t *Task) {
 	}
 
 	if err := json.Unmarshal(out, &playlistData); err != nil {
-		t.SetStatus("Failed", 0, fmt.Sprintf("parse playlist json: %v", err))
+		t.SetStatus("Failed", fmt.Sprintf("parse playlist json: %v", err))
 		return
 	}
 
@@ -225,7 +227,7 @@ func (m *Manager) runPlaylistTask(ctx context.Context, t *Task) {
 	}
 
 	t.SetTitle(playlistTitle)
-	t.SetStatus("Done", 100, "")
+	t.SetStatus("Done", "")
 
 	for i, entry := range playlistData.Entries {
 		entryURL := entry.URL
@@ -249,8 +251,9 @@ func (m *Manager) SubmitTrack(query, outputDir string, trackNum int) string {
 		Title:            "",
 		Artist:           "",
 		Status:           "Pending",
-		Progress:         0,
 		OutputDir:        outputDir,
+		IsPlaylist:       true,
+		PlaylistName:     outputDir,
 		PlaylistTrackNum: trackNum,
 		CancelFn:         cancel,
 	}

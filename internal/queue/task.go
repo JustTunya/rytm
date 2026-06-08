@@ -11,8 +11,9 @@ type Task struct {
 	Query      string
 	Title      string
 	Artist     string
-	Status     string // "Queued", "Pending", "Downloading", "Fingerprinting", "Tagging", "Done", "Failed", "Cancelled"
-	Progress   int    // 0 to 100
+	Album      string
+	PlaylistName string
+	Status     string // "Queued", "Pending", "Downloading", "Fingerprinting", "Tagging", "Done", "Failed", "Cancelled", "Fetching Playlist"
 	Error      string
 	OutputDir        string
 	IsPlaylist       bool
@@ -25,20 +26,22 @@ func (t *Task) GetStatus() ipc.TaskStatus {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return ipc.TaskStatus{
-		TaskID:   t.ID,
-		Query:    t.Query,
-		Title:    t.Title,
-		Artist:   t.Artist,
-		Status:   t.Status,
-		Progress: t.Progress,
-		Error:    t.Error,
+		TaskID:           t.ID,
+		Query:            t.Query,
+		Title:            t.Title,
+		Artist:           t.Artist,
+		Album:            t.Album,
+		Status:           t.Status,
+		Error:            t.Error,
+		IsPlaylist:       t.IsPlaylist,
+		PlaylistName:     t.PlaylistName,
+		PlaylistTrackNum: t.PlaylistTrackNum,
 	}
 }
-func (t *Task) SetStatus(status string, progress int, errMsg string) {
+func (t *Task) SetStatus(status string, errMsg string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.Status = status
-	t.Progress = progress
 	t.Error = errMsg
 }
 func (t *Task) SetTitle(title string) {
@@ -50,4 +53,9 @@ func (t *Task) SetArtist(artist string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.Artist = artist
+}
+func (t *Task) SetAlbum(album string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.Album = album
 }
