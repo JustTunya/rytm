@@ -6,7 +6,7 @@ import (
 
 func TestSubmitTrackWithTrackNum(t *testing.T) {
 	m := NewManager()
-	taskID := m.SubmitTrack("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "TestDir", 5)
+	taskID := m.SubmitTrack("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "TestDir", 5, "session_test")
 
 	m.mu.RLock()
 	task, exists := m.tasks[taskID]

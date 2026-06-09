@@ -20,6 +20,7 @@ var (
 	reTrack    = regexp.MustCompile(`^rytm_track:(.*)$`)
 	reYear     = regexp.MustCompile(`^rytm_release_year:(.*)$`)
 )
+
 func (m *Manager) downloadRaw(ctx context.Context, t *Task) (string, TrackMeta, string, error) {
 	queryArg := t.Query
 	if !strings.HasPrefix(t.Query, "http://") && !strings.HasPrefix(t.Query, "https://") {

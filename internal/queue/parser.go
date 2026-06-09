@@ -10,6 +10,7 @@ var (
 	reNoise = regexp.MustCompile(`(?i)\s*[\(\[][^\]\)]*(official|video|audio|lyric|clip|hq|hd|remastered|mono|stereo)[^\]\)]*[\)\]]`)
 	reFeat  = regexp.MustCompile(`(?i)\s*feat\..*`)
 )
+
 func parseFallbackMeta(videoTitle string) TrackMeta {
 	meta := TrackMeta{
 		Title:  videoTitle,

@@ -23,11 +23,12 @@ type Request struct {
 
 type TaskStatus struct {
 	TaskID           string `json:"task_id"`
+	SessionID        string `json:"session_id"`
 	Query            string `json:"query"`
 	Title            string `json:"title"`
 	Artist           string `json:"artist"`
 	Album            string `json:"album"`
-	Status           string `json:"status"`   // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
+	Status           string `json:"status"` // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
 	Error            string `json:"error,omitempty"`
 	IsPlaylist       bool   `json:"is_playlist"`
 	PlaylistName     string `json:"playlist_name,omitempty"`

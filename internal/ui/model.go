@@ -28,14 +28,17 @@ type TrackItem struct {
 }
 
 type Model struct {
-	State       SessionState
-	TextInput   textinput.Model
-	Tracks      []TrackItem
-	SearchQuery string
-	Err         error
-	FrameIndex  int
-	TickCount   int
-	ScrollOffset int
+	State            SessionState
+	TextInput        textinput.Model
+	Tracks           []TrackItem
+	SearchQuery      string
+	Err              error
+	FrameIndex       int
+	TickCount        int
+	ScrollOffset     int
+	CurrentSessionID string
+	WindowWidth      int
+	WindowHeight     int
 }
 
 func InitialModel() Model {

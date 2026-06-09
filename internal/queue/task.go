@@ -6,15 +6,17 @@ import (
 	"rytm/internal/ipc"
 	"sync"
 )
+
 type Task struct {
-	ID         string
-	Query      string
-	Title      string
-	Artist     string
-	Album      string
-	PlaylistName string
-	Status     string // "Queued", "Pending", "Downloading", "Fingerprinting", "Tagging", "Done", "Failed", "Cancelled", "Fetching Playlist"
-	Error      string
+	ID               string
+	SessionID        string
+	Query            string
+	Title            string
+	Artist           string
+	Album            string
+	PlaylistName     string
+	Status           string // "Queued", "Pending", "Downloading", "Fingerprinting", "Tagging", "Done", "Failed", "Cancelled", "Fetching Playlist"
+	Error            string
 	OutputDir        string
 	IsPlaylist       bool
 	PlaylistTrackNum int
@@ -22,11 +24,13 @@ type Task struct {
 	CancelFn         context.CancelFunc
 	mu               sync.RWMutex
 }
+
 func (t *Task) GetStatus() ipc.TaskStatus {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return ipc.TaskStatus{
 		TaskID:           t.ID,
+		SessionID:        t.SessionID,
 		Query:            t.Query,
 		Title:            t.Title,
 		Artist:           t.Artist,

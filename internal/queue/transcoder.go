@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 )
+
 func (m *Manager) transcodeWithMeta(ctx context.Context, rawPath, coverPath string, meta TrackMeta, outPath string, taskID string) error {
 	hasCover := coverPath != ""
 	var sb strings.Builder

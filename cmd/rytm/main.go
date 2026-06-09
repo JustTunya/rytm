@@ -24,7 +24,7 @@ func ensureDaemonRunning() (net.Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not resolve client path: %w", err)
 	}
-	
+
 	daemonName := "rytmd"
 	if runtime.GOOS == "windows" {
 		daemonName += ".exe"
@@ -34,12 +34,12 @@ func ensureDaemonRunning() (net.Conn, error) {
 	cmd := exec.Command(daemonPath)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
-	
+
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start daemon at %s: %w", daemonPath, err)
 	}
 
-	for i := 0; i < 10; i++ { 
+	for i := 0; i < 10; i++ {
 		time.Sleep(time.Millisecond * 200)
 		conn, err = net.Dial("unix", ipc.SocketPath)
 		if err == nil {
@@ -56,7 +56,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Startup Error: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	conn.Close()
 
 	model := ui.InitialModel()

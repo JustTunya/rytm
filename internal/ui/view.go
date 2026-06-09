@@ -10,15 +10,42 @@ import (
 
 var (
 	// Minimalist styling components matching a crisp terminal look
-	accentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true)
-	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
-	greyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
-	borderStyle = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("#333333")).Padding(1, 2)
+	accentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#2980b9")).Bold(true)
+	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#2c3e50"))
+	greyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#7f8c8d"))
+	borderStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#34495e")).Padding(1, 2)
 
+	// Table columns styles for playlists
+	numStyle    = lipgloss.NewStyle().Width(5)
+	titleStyle  = lipgloss.NewStyle().Width(35)
+	artistStyle = lipgloss.NewStyle().Width(20)
+	albumStyle  = lipgloss.NewStyle().Width(20)
+	statusStyle = lipgloss.NewStyle().Width(20)
+
+	// Loading Spinner Frames
 	spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 )
 
 func (m Model) View() string {
+	contentWidth := m.WindowWidth - 6
+	if contentWidth < 60 {
+		contentWidth = 60
+	}
+
+	availableColumnsWidth := contentWidth - 25
+	if availableColumnsWidth < 30 {
+		availableColumnsWidth = 30
+	}
+	baseWidth := availableColumnsWidth / 3
+
+	titleWidth := baseWidth + (availableColumnsWidth % 3)
+	artistWidth := baseWidth
+	albumWidth := baseWidth
+
+	dynamicTitleStyle := titleStyle.Width(titleWidth)
+	dynamicArtistStyle := artistStyle.Width(artistWidth)
+	dynamicAlbumStyle := albumStyle.Width(albumWidth)
+
 	var doc strings.Builder
 
 	doc.WriteString(accentStyle.Render("RYTM // Media Ingestion Engine"))
@@ -49,7 +76,6 @@ func (m Model) View() string {
 				}
 				playlists[t.PlaylistName] = append(playlists[t.PlaylistName], t)
 			} else {
-				// Don't show the main playlist task if it's already done and spawned children
 				if t.IsPlaylist && t.PlaylistTrackNum == 0 && t.Status == "Done" {
 					continue
 				}
@@ -59,7 +85,7 @@ func (m Model) View() string {
 
 		var flatItems []TrackItem
 		flatItems = append(flatItems, singles...)
-		
+
 		for _, pName := range playlistOrder {
 			pTracks := playlists[pName]
 			sort.Slice(pTracks, func(i, j int) bool {
@@ -75,7 +101,7 @@ func (m Model) View() string {
 			if maxOffset < 0 {
 				maxOffset = 0
 			}
-			
+
 			offset := m.ScrollOffset
 			if offset > maxOffset {
 				offset = maxOffset
@@ -92,91 +118,61 @@ func (m Model) View() string {
 			displayItems := flatItems[start:end]
 
 			lastPlaylist := ""
-			// If we scroll into the middle of a playlist, show its header at the top
-			if len(displayItems) > 0 && displayItems[0].IsPlaylist && displayItems[0].PlaylistTrackNum > 0 {
-				lastPlaylist = displayItems[0].PlaylistName
-				doc.WriteString(accentStyle.Render("Playlist: " + lastPlaylist) + "\n")
-				numStyle := lipgloss.NewStyle().Width(4)
-				titleStyle := lipgloss.NewStyle().Width(35)
-				artistStyle := lipgloss.NewStyle().Width(20)
-				albumStyle := lipgloss.NewStyle().Width(20)
-				statusStyle := lipgloss.NewStyle().Width(20)
-				header := numStyle.Render("#") + titleStyle.Render("Title") + artistStyle.Render("Artist") + albumStyle.Render("Album") + statusStyle.Render("Status")
-				doc.WriteString(dimStyle.Render(header) + "\n")
-			}
 
 			for i, track := range displayItems {
+				statusSymbol := " "
+				switch track.Status {
+				case "Done":
+					statusSymbol = "✔"
+				case "Failed", "Cancelled":
+					statusSymbol = "✖"
+				default:
+					statusSymbol = spinnerFrames[m.FrameIndex%len(spinnerFrames)]
+				}
+
 				if track.IsPlaylist && track.PlaylistTrackNum > 0 {
 					if track.PlaylistName != lastPlaylist {
 						if i > 0 {
 							doc.WriteString("\n")
 						}
-						doc.WriteString(accentStyle.Render("Playlist: " + track.PlaylistName) + "\n")
-						numStyle := lipgloss.NewStyle().Width(4)
-						titleStyle := lipgloss.NewStyle().Width(35)
-						artistStyle := lipgloss.NewStyle().Width(20)
-						albumStyle := lipgloss.NewStyle().Width(20)
-						statusStyle := lipgloss.NewStyle().Width(20)
-						header := numStyle.Render("#") + titleStyle.Render("Title") + artistStyle.Render("Artist") + albumStyle.Render("Album") + statusStyle.Render("Status")
-						doc.WriteString(dimStyle.Render(header) + "\n")
+						renderPlaylistHeader(track.PlaylistName, &doc, dynamicTitleStyle, dynamicArtistStyle, dynamicAlbumStyle)
 						lastPlaylist = track.PlaylistName
 					}
 
-					statusSymbol := "⏳"
-					isPendingOrRunning := track.Status == "Pending" || track.Status == "Downloading" || track.Status == "Fingerprinting" || track.Status == "Tagging" || track.Status == "Queued" || track.Status == "Fetching Playlist"
-					if isPendingOrRunning {
-						statusSymbol = spinnerFrames[m.FrameIndex%len(spinnerFrames)]
-					} else if track.Status == "Done" { 
-						statusSymbol = "✓" 
-					} else if track.Status == "Failed" || track.Status == "Cancelled" { 
-						statusSymbol = "✗" 
-					}
-					
 					statusText := track.Status
-					if track.Status == "Failed" && track.Error != "" {
-						statusText = "Failed"
-					}
-					
+
 					title := track.Title
-					if title == "" { 
-						title = "Track " + fmt.Sprintf("%d", track.PlaylistTrackNum)
+					if title == "" {
+						title = fmt.Sprintf("Track %d", track.PlaylistTrackNum)
 					}
-					if len(title) > 33 { title = title[:30] + "..." }
-					
+					if titleWidth > 5 && len(title) > titleWidth-2 {
+						title = title[:titleWidth-5] + "..."
+					}
+
 					artist := track.Artist
-					if len(artist) > 18 { artist = artist[:15] + "..." }
+					if artistWidth > 5 && len(artist) > artistWidth-2 {
+						artist = artist[:artistWidth-5] + "..."
+					}
 
 					album := track.Album
-					if len(album) > 18 { album = album[:15] + "..." }
-					
-					numStr := fmt.Sprintf("%d", track.PlaylistTrackNum)
-					
-					numStyle := lipgloss.NewStyle().Width(4)
-					titleStyle := lipgloss.NewStyle().Width(35)
-					artistStyle := lipgloss.NewStyle().Width(20)
-					albumStyle := lipgloss.NewStyle().Width(20)
-					statusStyle := lipgloss.NewStyle().Width(20)
-
-					row := numStyle.Render(numStr) + 
-						   titleStyle.Render(title) + 
-						   artistStyle.Render(artist) + 
-						   albumStyle.Render(album) + 
-						   statusStyle.Render(statusSymbol + " " + statusText)
-					
-					doc.WriteString(row + "\n")
-				} else {
-					lastPlaylist = "" // Reset so next playlist prints its header
-					
-					isPendingOrRunning := track.Status == "Pending" || track.Status == "Downloading" || track.Status == "Fingerprinting" || track.Status == "Tagging" || track.Status == "Queued" || track.Status == "Fetching Playlist"
-					
-					statusSymbol := "⏳"
-					if isPendingOrRunning {
-						statusSymbol = spinnerFrames[m.FrameIndex%len(spinnerFrames)]
-					} else if track.Status == "Done" {
-						statusSymbol = "✓"
-					} else if track.Status == "Failed" || track.Status == "Cancelled" {
-						statusSymbol = "✗"
+					if albumWidth > 5 && len(album) > albumWidth-2 {
+						album = album[:albumWidth-5] + "..."
 					}
+
+					numStr := fmt.Sprintf("%d", track.PlaylistTrackNum)
+
+					row := numStyle.Render(numStr) +
+						dynamicTitleStyle.Render(title) +
+						dynamicArtistStyle.Render(artist) +
+						dynamicAlbumStyle.Render(album) +
+						statusStyle.Render(statusSymbol+" "+statusText)
+
+					doc.WriteString(row)
+					doc.WriteString("\n")
+				} else {
+					lastPlaylist = ""
+
+					isPendingOrRunning := track.Status == "Pending" || track.Status == "Downloading" || track.Status == "Fingerprinting" || track.Status == "Tagging" || track.Status == "Queued" || track.Status == "Fetching Playlist"
 
 					statusText := track.Status
 					if track.Status == "Failed" && track.Error != "" {
@@ -190,8 +186,17 @@ func (m Model) View() string {
 						if title == "" {
 							title = track.Query
 						}
-						doc.WriteString(fmt.Sprintf("%s %-30s [%s]\n", statusSymbol, title, statusText))
-						
+
+						maxTitleLen := contentWidth - 30
+						if maxTitleLen < 30 {
+							maxTitleLen = 30
+						}
+						if len(title) > maxTitleLen {
+							title = title[:maxTitleLen-3] + "..."
+						}
+
+						doc.WriteString(fmt.Sprintf("%s %-*s [%s]\n", statusSymbol, maxTitleLen, title, statusText))
+
 						artist := track.Artist
 						if artist == "" {
 							artist = "Unknown Artist"
@@ -203,19 +208,28 @@ func (m Model) View() string {
 
 			if len(flatItems) > 6 {
 				doc.WriteString("\n")
-				indicator := fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(flatItems))
-				rightAligned := lipgloss.NewStyle().Width(99).Align(lipgloss.Right).Render(indicator)
-				doc.WriteString(dimStyle.Render(rightAligned) + "\n")
+				indicator := fmt.Sprintf("↑/↓ to scroll | [%d-%d of %d items]", start+1, end, len(flatItems))
+				rightAligned := lipgloss.NewStyle().Align(lipgloss.Right).Width(contentWidth).Render(indicator)
+				doc.WriteString(dimStyle.Render(rightAligned))
+				doc.WriteString("\n")
 			}
 		}
 
 		doc.WriteString("\n")
-		doc.WriteString(dimStyle.Render("Press [up/down] to scroll | [esc] to return | [q] to quit"))
+		doc.WriteString(dimStyle.Render("[esc] to return | [q] to quit"))
 	}
 
 	if m.Err != nil {
 		doc.WriteString(fmt.Sprintf("\n\nError: %v", m.Err))
 	}
 
-	return borderStyle.Render(doc.String())
+	return borderStyle.Width(contentWidth + 4).Render(doc.String())
+}
+
+func renderPlaylistHeader(name string, doc *strings.Builder, dynamicTitleStyle lipgloss.Style, dynamicArtistStyle lipgloss.Style, dynamicAlbumStyle lipgloss.Style) {
+	doc.WriteString(accentStyle.Render("Playlist: " + name))
+	doc.WriteString("\n")
+	header := numStyle.Render("#") + dynamicTitleStyle.Render("Title") + dynamicArtistStyle.Render("Artist") + dynamicAlbumStyle.Render("Album") + statusStyle.Render("Status")
+	doc.WriteString(dimStyle.Render(header))
+	doc.WriteString("\n")
 }

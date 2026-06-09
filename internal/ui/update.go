@@ -26,6 +26,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.WindowWidth = msg.Width
+		m.WindowHeight = msg.Height
+		m.TextInput.Width = m.WindowWidth - 10
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
@@ -64,13 +70,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case downloadStartedMsg:
 		m.State = StateDashboard
+		m.CurrentSessionID = msg.TaskID
 		return m, pollStatusCmd()
 
 	case statusUpdateMsg:
-		m.Tracks = make([]TrackItem, len(msg.Tasks))
+		m.Tracks = make([]TrackItem, 0, len(msg.Tasks))
 		anyRunning := false
-		for i, t := range msg.Tasks {
-			m.Tracks[i] = TrackItem{
+		for _, t := range msg.Tasks {
+			if t.SessionID != m.CurrentSessionID {
+				continue
+			}
+			m.Tracks = append(m.Tracks, TrackItem{
 				TaskID:           t.TaskID,
 				Query:            t.Query,
 				Title:            t.Title,
@@ -81,14 +91,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				IsPlaylist:       t.IsPlaylist,
 				PlaylistName:     t.PlaylistName,
 				PlaylistTrackNum: t.PlaylistTrackNum,
-			}
-			
+			})
+
 			// Use t.Status instead of t.State
 			if t.Status == "Pending" || t.Status == "Downloading" || t.Status == "Fingerprinting" || t.Status == "Tagging" || t.Status == "Queued" || t.Status == "Fetching Playlist" {
 				anyRunning = true
 			}
 		}
-		
+
 		if anyRunning && m.State == StateDashboard {
 			return m, tickPoll()
 		}

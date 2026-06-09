@@ -17,7 +17,7 @@ func main() {
 	if execPath, err := os.Executable(); err == nil {
 		binDir := filepath.Dir(execPath)
 		binPaths = append(binPaths, binDir)
-		
+
 		os.Chdir(filepath.Dir(binDir))
 	}
 	binPaths = append(binPaths, filepath.Join(".", "bin"))

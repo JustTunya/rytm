@@ -14,11 +14,13 @@ import (
 
 	"rytm/internal/ipc"
 )
+
 type Manager struct {
 	mu       sync.RWMutex
 	tasks    map[string]*Task
 	trackSem chan struct{}
 }
+
 func NewManager() *Manager {
 	return &Manager{
 		tasks:    make(map[string]*Task),
@@ -49,6 +51,7 @@ func (m *Manager) Submit(query string) string {
 	ctx, cancel := context.WithCancel(context.Background())
 	task := &Task{
 		ID:         taskID,
+		SessionID:  taskID,
 		Query:      query,
 		Title:      "",
 		Artist:     "",
@@ -65,6 +68,7 @@ func (m *Manager) Submit(query string) string {
 	}
 	return taskID
 }
+
 // runTask is the two-phase pipeline:
 //
 //  1. downloadRaw  — yt-dlp writes the raw audio stream to a temp file.
@@ -141,7 +145,7 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 	// ── Phase 3: Single-pass FFmpeg transcode ────────────────────────────────
 	t.SetStatus("Tagging", "")
 	outName := buildOutputName(meta, videoTitle, t.Query)
-	
+
 	if t.OutputDir != "" {
 		if err := os.MkdirAll(t.OutputDir, 0755); err == nil {
 			outName = filepath.Join(t.OutputDir, outName)
@@ -199,7 +203,7 @@ func (m *Manager) GetAllTasks() []ipc.TaskStatus {
 }
 func (m *Manager) runPlaylistTask(ctx context.Context, t *Task) {
 	t.SetStatus("Fetching Playlist", "")
-	
+
 	cmd := exec.CommandContext(ctx, "yt-dlp", "-J", "--flat-playlist", t.Query)
 	out, err := cmd.Output()
 	if err != nil {
@@ -235,18 +239,19 @@ func (m *Manager) runPlaylistTask(ctx context.Context, t *Task) {
 			entryURL = "https://www.youtube.com/watch?v=" + entry.ID
 		}
 		if entryURL != "" {
-			m.SubmitTrack(entryURL, playlistTitle, i+1)
+			m.SubmitTrack(entryURL, playlistTitle, i+1, t.SessionID)
 		}
 	}
 }
 
-func (m *Manager) SubmitTrack(query, outputDir string, trackNum int) string {
+func (m *Manager) SubmitTrack(query, outputDir string, trackNum int, sessionID string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	taskID := fmt.Sprintf("task_%d", len(m.tasks)+1)
 	ctx, cancel := context.WithCancel(context.Background())
 	task := &Task{
 		ID:               taskID,
+		SessionID:        sessionID,
 		Query:            query,
 		Title:            "",
 		Artist:           "",
