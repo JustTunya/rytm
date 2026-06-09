@@ -12,16 +12,21 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 const (
 	acoustIDEndpoint = "https://api.acoustid.org/v2/lookup"
 	mbEndpoint       = "https://musicbrainz.org/ws/2"
 	coverArtEndpoint = "https://coverartarchive.org/release"
-	userAgent = "rytm/1.0 (https://github.com/JustTunya/rytm)"
+	userAgent        = "rytm/1.0 (https://github.com/JustTunya/rytm)"
 )
 
 var fpHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// acoustIDLimiter ensures we do not exceed 2 requests per second to AcoustID
+var acoustIDLimiter = rate.NewLimiter(rate.Every(time.Second/2), 1)
 
 func acoustIDKey() string {
 	if k := os.Getenv("ACOUSTID_KEY"); k != "" {
@@ -99,7 +104,7 @@ type acoustIDResponse struct {
 }
 
 type acoustIDResult struct {
-	Score      float64            `json:"score"`
+	Score      float64             `json:"score"`
 	Recordings []acoustIDRecording `json:"recordings"`
 }
 
@@ -108,6 +113,11 @@ type acoustIDRecording struct {
 }
 
 func queryAcoustID(ctx context.Context, fingerprint string, duration int) (string, error) {
+	// Enforce global rate limit of 2 requests per second
+	if err := acoustIDLimiter.Wait(ctx); err != nil {
+		return "", fmt.Errorf("acoustid rate limit wait: %w", err)
+	}
+
 	resp, err := doWithRetry(ctx, func() (*http.Request, error) {
 		form := url.Values{}
 		form.Set("client", acoustIDKey())

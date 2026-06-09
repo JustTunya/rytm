@@ -15,31 +15,38 @@ const (
 )
 
 type TrackItem struct {
-	TaskID   string
-	Query    string
-	Title    string
-	Artist   string
-	Status   string // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
-	Progress int    // 0 to 100
-	Error    string
+	TaskID           string
+	Query            string
+	Title            string
+	Artist           string
+	Album            string
+	Status           string // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
+	Error            string
+	IsPlaylist       bool
+	PlaylistName     string
+	PlaylistTrackNum int
 }
 
 type Model struct {
-	State       SessionState
-	TextInput   textinput.Model
-	Tracks      []TrackItem
-	SearchQuery string
-	Err         error
-	FrameIndex  int
-	TickCount   int
+	State            SessionState
+	TextInput        textinput.Model
+	Tracks           []TrackItem
+	SearchQuery      string
+	Err              error
+	FrameIndex       int
+	TickCount        int
+	ScrollOffset     int
+	CurrentSessionID string
+	WindowWidth      int
+	WindowHeight     int
 }
 
 func InitialModel() Model {
 	ti := textinput.New()
 	ti.Placeholder = "Paste YouTube URL or type song name..."
 	ti.Focus()
-	ti.CharLimit = 156
-	ti.Width = 50
+	ti.CharLimit = 1024
+	ti.Width = 100
 
 	return Model{
 		State:     StateInput,

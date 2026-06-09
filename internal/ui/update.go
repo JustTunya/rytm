@@ -26,10 +26,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.WindowWidth = msg.Width
+		m.WindowHeight = msg.Height
+		m.TextInput.Width = m.WindowWidth - 10
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return m, tea.Quit
+		case "q":
+			if m.State != StateInput {
+				return m, tea.Quit
+			}
 		case "esc":
 			if m.State == StateDashboard {
 				m.State = StateInput
@@ -43,34 +53,52 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.State = StateSearching
 				m.TextInput.Blur()
 				m.Err = nil
+				m.ScrollOffset = 0 // Reset scroll offset on new search
 				return m, sendDownloadCmd(m.SearchQuery)
 			}
+		case "up":
+			if m.State == StateDashboard && m.ScrollOffset > 0 {
+				m.ScrollOffset--
+			}
+			return m, nil
+		case "down":
+			if m.State == StateDashboard {
+				m.ScrollOffset++
+			}
+			return m, nil
 		}
 
 	case downloadStartedMsg:
 		m.State = StateDashboard
+		m.CurrentSessionID = msg.TaskID
 		return m, pollStatusCmd()
 
 	case statusUpdateMsg:
-		m.Tracks = make([]TrackItem, len(msg.Tasks))
+		m.Tracks = make([]TrackItem, 0, len(msg.Tasks))
 		anyRunning := false
-		for i, t := range msg.Tasks {
-			m.Tracks[i] = TrackItem{
-				TaskID:   t.TaskID,
-				Query:    t.Query,
-				Title:    t.Title,
-				Artist:   t.Artist,
-				Status:   t.Status,
-				Progress: t.Progress,
-				Error:    t.Error,
+		for _, t := range msg.Tasks {
+			if t.SessionID != m.CurrentSessionID {
+				continue
 			}
-			
+			m.Tracks = append(m.Tracks, TrackItem{
+				TaskID:           t.TaskID,
+				Query:            t.Query,
+				Title:            t.Title,
+				Artist:           t.Artist,
+				Album:            t.Album,
+				Status:           t.Status,
+				Error:            t.Error,
+				IsPlaylist:       t.IsPlaylist,
+				PlaylistName:     t.PlaylistName,
+				PlaylistTrackNum: t.PlaylistTrackNum,
+			})
+
 			// Use t.Status instead of t.State
-			if t.Status == "Pending" || t.Status == "Downloading" || t.Status == "Fingerprinting" || t.Status == "Tagging" || t.Status == "Queued" {
+			if t.Status == "Pending" || t.Status == "Downloading" || t.Status == "Fingerprinting" || t.Status == "Tagging" || t.Status == "Queued" || t.Status == "Fetching Playlist" {
 				anyRunning = true
 			}
 		}
-		
+
 		if anyRunning && m.State == StateDashboard {
 			return m, tickPoll()
 		}

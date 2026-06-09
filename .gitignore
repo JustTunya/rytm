@@ -39,3 +39,6 @@ Thumbs.db
 
 # local runners
 *.bat
+
+# cookies
+cookies.txt

@@ -7,17 +7,18 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"syscall"
-
 	"rytm/internal/ipc"
 	"rytm/internal/queue"
+	"syscall"
 )
 
 func main() {
-	// Prepend bundled bin directory to PATH so yt-dlp, ffmpeg, ffprobe are found
 	var binPaths []string
 	if execPath, err := os.Executable(); err == nil {
-		binPaths = append(binPaths, filepath.Join(filepath.Dir(execPath), "bin"))
+		binDir := filepath.Dir(execPath)
+		binPaths = append(binPaths, binDir)
+
+		os.Chdir(filepath.Dir(binDir))
 	}
 	binPaths = append(binPaths, filepath.Join(".", "bin"))
 
@@ -31,17 +32,14 @@ func main() {
 	}
 	os.Setenv("PATH", pathEnv)
 
-	// FIX: Use the shared, cross-platform socket path from the ipc package
 	socketPath := ipc.SocketPath
 
-	// Ensure the parent directory exists (vital for Windows AppData/Local/Temp)
 	dir := filepath.Dir(socketPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating socket directory: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Clean up any stale socket file
 	_ = os.Remove(socketPath)
 
 	listener, err := net.Listen("unix", socketPath)
@@ -55,7 +53,6 @@ func main() {
 	manager := queue.NewManager()
 	defer manager.Shutdown()
 
-	// Signal channel for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -73,7 +70,6 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			// Check if listener is closed
 			select {
 			case <-sigChan:
 				return
@@ -96,7 +92,6 @@ func handleConnection(conn net.Conn, mgr *queue.Manager) {
 	for {
 		var req ipc.Request
 		if err := decoder.Decode(&req); err != nil {
-			// EOF or connection closed
 			return
 		}
 
