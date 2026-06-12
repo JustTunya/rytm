@@ -13,18 +13,21 @@ import (
 	"sync"
 
 	"rytm/internal/ipc"
+	"rytm/internal/resolve"
 )
 
 type Manager struct {
 	mu       sync.RWMutex
 	tasks    map[string]*Task
 	trackSem chan struct{}
+	resolver *resolve.Resolver // nil = skip resolution (graceful degradation)
 }
 
-func NewManager() *Manager {
+func NewManager(resolver *resolve.Resolver) *Manager {
 	return &Manager{
 		tasks:    make(map[string]*Task),
 		trackSem: make(chan struct{}, 3),
+		resolver: resolver,
 	}
 }
 func isPlaylistURL(query string) bool {
@@ -76,6 +79,36 @@ func (m *Manager) Submit(query string) string {
 //  3. transcodeWithMeta — FFmpeg converts to AAC/m4a and injects all tags in
 //     the same pass where the volume filter is applied.
 func (m *Manager) runTask(ctx context.Context, t *Task) {
+	// ── Phase 0: Pre-fetch resolution ──────────────────────────────────
+	if m.resolver != nil && !isDirectURL(t.Query) {
+		t.SetStatus("Resolving", "")
+		result, err := m.resolver.Resolve(ctx, t.Query)
+		if err == nil {
+			t.mu.Lock()
+			t.ResolvedURL = result.URL
+			t.mu.Unlock()
+			if result.Entity.Title != "" {
+				t.SetTitle(result.Entity.Title)
+			}
+			if len(result.Entity.Artists) > 0 {
+				t.SetArtist(result.Entity.Artists[0])
+			}
+			// If the result is a multi-track entity (album/playlist), expand tracks
+			if result.IsMulti && len(result.Tracks) > 0 {
+				t.SetStatus("Done", "")
+				albumTitle := sanitizeFilename(result.Entity.Title)
+				if albumTitle == "" {
+					albumTitle = "Playlist"
+				}
+				for i, track := range result.Tracks {
+					m.SubmitTrack(track.URL(), albumTitle, i+1, t.SessionID)
+				}
+				return
+			}
+		}
+		// On resolution failure: log and fall through to yt-dlp ytsearch
+	}
+
 	t.SetStatus("Queued", "")
 	select {
 	case m.trackSem <- struct{}{}:
@@ -284,3 +317,9 @@ func (m *Manager) Shutdown() {
 		task.mu.Unlock()
 	}
 }
+
+// isDirectURL returns true if the query is already a YouTube/URL — no resolution needed.
+func isDirectURL(query string) bool {
+	return strings.HasPrefix(query, "http://") || strings.HasPrefix(query, "https://")
+}
+

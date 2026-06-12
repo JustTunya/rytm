@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"rytm/internal/ipc"
 	"rytm/internal/queue"
+	"rytm/internal/resolve"
 	"syscall"
 )
 
@@ -50,7 +51,10 @@ func main() {
 	defer listener.Close()
 	defer os.Remove(socketPath)
 
-	manager := queue.NewManager()
+	provider := resolve.NewInnerTubeProvider()
+	scorer := resolve.DefaultScoring{}
+	resolver := resolve.NewResolver(provider, scorer)
+	manager := queue.NewManager(resolver)
 	defer manager.Shutdown()
 
 	sigChan := make(chan os.Signal, 1)

@@ -28,7 +28,7 @@ type TaskStatus struct {
 	Title            string `json:"title"`
 	Artist           string `json:"artist"`
 	Album            string `json:"album"`
-	Status           string `json:"status"` // "Pending", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
+	Status           string `json:"status"` // "Pending", "Resolving", "Downloading", "Tagging", "Done", "Failed", "Cancelled"
 	Error            string `json:"error,omitempty"`
 	IsPlaylist       bool   `json:"is_playlist"`
 	PlaylistName     string `json:"playlist_name,omitempty"`

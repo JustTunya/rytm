@@ -42,3 +42,6 @@ Thumbs.db
 
 # cookies
 cookies.txt
+
+# markdown
+*.md

@@ -94,7 +94,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 
 			// Use t.Status instead of t.State
-			if t.Status == "Pending" || t.Status == "Downloading" || t.Status == "Fingerprinting" || t.Status == "Tagging" || t.Status == "Queued" || t.Status == "Fetching Playlist" {
+			if t.Status == "Pending" || t.Status == "Resolving" || t.Status == "Downloading" || t.Status == "Fingerprinting" || t.Status == "Tagging" || t.Status == "Queued" || t.Status == "Fetching Playlist" {
 				anyRunning = true
 			}
 		}

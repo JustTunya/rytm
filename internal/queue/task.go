@@ -11,11 +11,12 @@ type Task struct {
 	ID               string
 	SessionID        string
 	Query            string
+	ResolvedURL      string // Set by the resolution engine; used instead of Query for yt-dlp
 	Title            string
 	Artist           string
 	Album            string
 	PlaylistName     string
-	Status           string // "Queued", "Pending", "Downloading", "Fingerprinting", "Tagging", "Done", "Failed", "Cancelled", "Fetching Playlist"
+	Status           string // "Queued", "Pending", "Resolving", "Downloading", "Fingerprinting", "Tagging", "Done", "Failed", "Cancelled", "Fetching Playlist"
 	Error            string
 	OutputDir        string
 	IsPlaylist       bool

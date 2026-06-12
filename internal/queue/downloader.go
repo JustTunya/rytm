@@ -23,7 +23,13 @@ var (
 
 func (m *Manager) downloadRaw(ctx context.Context, t *Task) (string, TrackMeta, string, error) {
 	queryArg := t.Query
-	if !strings.HasPrefix(t.Query, "http://") && !strings.HasPrefix(t.Query, "https://") {
+	t.mu.RLock()
+	resolvedURL := t.ResolvedURL
+	t.mu.RUnlock()
+	
+	if resolvedURL != "" {
+		queryArg = resolvedURL
+	} else if !strings.HasPrefix(t.Query, "http://") && !strings.HasPrefix(t.Query, "https://") {
 		queryArg = fmt.Sprintf(`ytsearch1:%s "Provided to YouTube"`, strings.TrimSpace(t.Query))
 	}
 	rawTemplate := filepath.Join(os.TempDir(), fmt.Sprintf("rytm_%s.%%(ext)s", t.ID))

@@ -172,7 +172,7 @@ func (m Model) View() string {
 				} else {
 					lastPlaylist = ""
 
-					isPendingOrRunning := track.Status == "Pending" || track.Status == "Downloading" || track.Status == "Fingerprinting" || track.Status == "Tagging" || track.Status == "Queued" || track.Status == "Fetching Playlist"
+					isPendingOrRunning := track.Status == "Pending" || track.Status == "Resolving" || track.Status == "Downloading" || track.Status == "Fingerprinting" || track.Status == "Tagging" || track.Status == "Queued" || track.Status == "Fetching Playlist"
 
 					statusText := track.Status
 					if track.Status == "Failed" && track.Error != "" {
