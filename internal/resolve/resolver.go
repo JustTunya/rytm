@@ -36,7 +36,7 @@ type FullResult struct {
 
 const (
 	ConfidenceThreshold = 40.0 // Min score delta between #1 and #2 for auto-queue
-	MaxCandidates       = 5    // Max entities returned for disambiguation
+	MaxCandidates       = 20   // Max entities returned for disambiguation
 )
 
 // Result is the output of a successful resolution.
@@ -107,10 +107,16 @@ func (r *Resolver) ResolveAll(ctx context.Context, query string) (FullResult, er
 		return FullResult{}, ErrNoResults
 	}
 
-	// Cap candidates
-	candidates := scored
-	if len(candidates) > MaxCandidates {
-		candidates = candidates[:MaxCandidates]
+	// Cap candidates and filter by score delta (close enough score)
+	var candidates []ScoredEntity
+	topScore := scored[0].Score
+	for _, sc := range scored {
+		if len(candidates) >= MaxCandidates {
+			break
+		}
+		if topScore-sc.Score < ConfidenceThreshold {
+			candidates = append(candidates, sc)
+		}
 	}
 
 	// Determine confidence via score delta

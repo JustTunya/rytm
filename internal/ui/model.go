@@ -52,8 +52,9 @@ type Model struct {
 	WindowHeight     int
 
 	// Disambiguation state
-	DisambiguationItems  []DisambiguationItem
-	DisambiguationCursor int
+	DisambiguationItems        []DisambiguationItem
+	DisambiguationCursor       int
+	DisambiguationScrollOffset int
 }
 
 func InitialModel() Model {

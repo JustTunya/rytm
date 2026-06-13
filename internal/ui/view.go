@@ -81,32 +81,57 @@ func (m Model) View() string {
 	case StateDisambiguation:
 		doc.WriteString(fmt.Sprintf("Results for '%s':\n\n", m.SearchQuery))
 
-		// Column headers
-		header := disambTitleStyle.Render("Title") +
-			disambArtistStyle.Render("Artist") +
-			disambAlbumStyle.Render("Album") +
-			disambTypeStyle.Render("Type")
+		// Column headers matching playlist download tracker tables
+		header := numStyle.Render("#") +
+			dynamicTitleStyle.Render("Title") +
+			dynamicArtistStyle.Render("Artist") +
+			dynamicAlbumStyle.Render("Album") +
+			statusStyle.Render("Type")
 		doc.WriteString(dimStyle.Render(header))
 		doc.WriteString("\n")
 
-		for i, item := range m.DisambiguationItems {
+		start := m.DisambiguationScrollOffset
+		end := start + 6
+		if end > len(m.DisambiguationItems) {
+			end = len(m.DisambiguationItems)
+		}
+		if start < 0 {
+			start = 0
+		}
+		if start > end {
+			start = end
+		}
+
+		displayItems := m.DisambiguationItems[start:end]
+
+		for idx, item := range displayItems {
+			i := start + idx
 			isSelected := i == m.DisambiguationCursor
 
-			title := truncate(item.Title, disambTitleWidth-2)
-			artist := truncate(item.Artist, disambArtistWidth-2)
-			album := truncate(item.Album, disambAlbumWidth-2)
+			title := truncate(item.Title, titleWidth-2)
+			artist := truncate(item.Artist, artistWidth-2)
+			album := truncate(item.Album, albumWidth-2)
 			typeStr := item.Type
 
-			row := disambTitleStyle.Render(title) +
-				disambArtistStyle.Render(artist) +
-				disambAlbumStyle.Render(album) +
-				disambTypeStyle.Render(typeStr)
+			row := numStyle.Render(fmt.Sprintf("%d", i+1)) +
+				dynamicTitleStyle.Render(title) +
+				dynamicArtistStyle.Render(artist) +
+				dynamicAlbumStyle.Render(album) +
+				statusStyle.Render(typeStr)
 
 			if isSelected {
 				row = selectedRowStyle.Render(row)
 			}
 
 			doc.WriteString(row)
+			doc.WriteString("\n")
+		}
+
+		if len(m.DisambiguationItems) > 6 {
+			doc.WriteString("\n")
+			indicator := fmt.Sprintf("↑/↓ to scroll | [%d-%d of %d items]", start+1, end, len(m.DisambiguationItems))
+			rightAligned := lipgloss.NewStyle().Align(lipgloss.Right).Width(contentWidth).Render(indicator)
+			doc.WriteString(dimStyle.Render(rightAligned))
 			doc.WriteString("\n")
 		}
 

@@ -1,18 +1,24 @@
 package ipc
 
 import (
-	"os"
-	"path/filepath"
 	"runtime"
 )
 
+var IPCNetwork string
+var IPCAddress string
+
+// Deprecated: use IPCNetwork and IPCAddress
 var SocketPath string
 
 func init() {
 	if runtime.GOOS == "windows" {
-		SocketPath = filepath.Join(os.TempDir(), "rytm_v2.sock")
+		IPCNetwork = "tcp"
+		IPCAddress = "127.0.0.1:18392"
+		SocketPath = IPCAddress
 	} else {
-		SocketPath = "/tmp/rytm_v2.sock"
+		IPCNetwork = "unix"
+		IPCAddress = "/tmp/rytm_v2.sock"
+		SocketPath = IPCAddress
 	}
 }
 

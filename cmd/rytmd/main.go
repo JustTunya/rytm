@@ -36,23 +36,34 @@ func main() {
 	}
 	os.Setenv("PATH", pathEnv)
 
-	socketPath := ipc.SocketPath
-
-	dir := filepath.Dir(socketPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating socket directory: %v\n", err)
+	// Single-instance check
+	if conn, err := net.Dial(ipc.IPCNetwork, ipc.IPCAddress); err == nil {
+		conn.Close()
+		fmt.Fprintf(os.Stderr, "Error: rytmd daemon is already running.\n")
 		os.Exit(1)
 	}
 
-	_ = os.Remove(socketPath)
+	// Clean up stale temp files from previous sessions
+	cleanStaleTempFiles()
 
-	listener, err := net.Listen("unix", socketPath)
+	if ipc.IPCNetwork == "unix" {
+		dir := filepath.Dir(ipc.IPCAddress)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating socket directory: %v\n", err)
+			os.Exit(1)
+		}
+		_ = os.Remove(ipc.IPCAddress)
+	}
+
+	listener, err := net.Listen(ipc.IPCNetwork, ipc.IPCAddress)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error starting socket listener: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error starting listener: %v\n", err)
 		os.Exit(1)
 	}
 	defer listener.Close()
-	defer os.Remove(socketPath)
+	if ipc.IPCNetwork == "unix" {
+		defer os.Remove(ipc.IPCAddress)
+	}
 
 	provider := resolve.NewInnerTubeProvider()
 	scorer := resolve.DefaultScoring{}
@@ -68,11 +79,13 @@ func main() {
 		fmt.Println("\nShutting down rytmd daemon...")
 		manager.Shutdown()
 		listener.Close()
-		_ = os.Remove(socketPath)
+		if ipc.IPCNetwork == "unix" {
+			_ = os.Remove(ipc.IPCAddress)
+		}
 		os.Exit(0)
 	}()
 
-	fmt.Printf("rytmd daemon listening on %s\n", socketPath)
+	fmt.Printf("rytmd daemon listening on (%s) %s\n", ipc.IPCNetwork, ipc.IPCAddress)
 
 	for {
 		conn, err := listener.Accept()
@@ -185,6 +198,19 @@ func handleConnection(conn net.Conn, mgr *queue.Manager, resolver *resolve.Resol
 
 		if err := encoder.Encode(resp); err != nil {
 			return
+		}
+	}
+}
+
+func cleanStaleTempFiles() {
+	tempDir := os.TempDir()
+	files, err := os.ReadDir(tempDir)
+	if err != nil {
+		return
+	}
+	for _, f := range files {
+		if !f.IsDir() && strings.HasPrefix(f.Name(), "rytm_") {
+			_ = os.Remove(filepath.Join(tempDir, f.Name()))
 		}
 	}
 }

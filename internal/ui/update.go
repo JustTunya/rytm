@@ -86,6 +86,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.State == StateDisambiguation && m.DisambiguationCursor > 0 {
 				m.DisambiguationCursor--
+				if m.DisambiguationCursor < m.DisambiguationScrollOffset {
+					m.DisambiguationScrollOffset = m.DisambiguationCursor
+				}
 			}
 			return m, nil
 		case "down":
@@ -94,6 +97,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.State == StateDisambiguation && m.DisambiguationCursor < len(m.DisambiguationItems)-1 {
 				m.DisambiguationCursor++
+				if m.DisambiguationCursor >= m.DisambiguationScrollOffset+6 {
+					m.DisambiguationScrollOffset = m.DisambiguationCursor - 5
+				}
 			}
 			return m, nil
 		}
@@ -110,6 +116,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case resolutionDisambiguateMsg:
 		m.State = StateDisambiguation
 		m.DisambiguationCursor = 0
+		m.DisambiguationScrollOffset = 0
 		m.DisambiguationItems = make([]DisambiguationItem, 0, len(msg.Candidates))
 		for _, c := range msg.Candidates {
 			m.DisambiguationItems = append(m.DisambiguationItems, DisambiguationItem{
@@ -181,7 +188,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func sendResolveCmd(query string) tea.Cmd {
 	return func() tea.Msg {
 		// FIX 3: Use dynamic Windows/Linux socket path
-		conn, err := net.Dial("unix", ipc.SocketPath)
+		conn, err := net.Dial(ipc.IPCNetwork, ipc.IPCAddress)
 		if err != nil {
 			return errMsg(fmt.Errorf("failed to connect to rytmd: %w", err))
 		}
@@ -216,7 +223,7 @@ func sendResolveCmd(query string) tea.Cmd {
 func sendSubmitURLCmd(url string) tea.Cmd {
 	return func() tea.Msg {
 		// FIX 3: Use dynamic Windows/Linux socket path
-		conn, err := net.Dial("unix", ipc.SocketPath)
+		conn, err := net.Dial(ipc.IPCNetwork, ipc.IPCAddress)
 		if err != nil {
 			return errMsg(fmt.Errorf("failed to connect to rytmd: %w", err))
 		}
@@ -251,7 +258,7 @@ func isDirectURL(query string) bool {
 func pollStatusCmd() tea.Cmd {
 	return func() tea.Msg {
 		// FIX 3: Use dynamic Windows/Linux socket path
-		conn, err := net.Dial("unix", ipc.SocketPath)
+		conn, err := net.Dial(ipc.IPCNetwork, ipc.IPCAddress)
 		if err != nil {
 			return errMsg(fmt.Errorf("failed to connect to rytmd: %w", err))
 		}

@@ -259,21 +259,26 @@ func (m *Manager) runPlaylistTask(ctx context.Context, t *Task) {
 	t.SetStatus("Done", "")
 
 	for i, entry := range playlistData.Entries {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		entryURL := entry.URL
 		if entryURL == "" && entry.ID != "" {
 			entryURL = "https://www.youtube.com/watch?v=" + entry.ID
 		}
 		if entryURL != "" {
-			m.SubmitTrack(entryURL, playlistTitle, i+1, t.SessionID)
+			m.SubmitTrack(ctx, entryURL, playlistTitle, i+1, t.SessionID)
 		}
 	}
 }
 
-func (m *Manager) SubmitTrack(query, outputDir string, trackNum int, sessionID string) string {
+func (m *Manager) SubmitTrack(parentCtx context.Context, query, outputDir string, trackNum int, sessionID string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	taskID := fmt.Sprintf("task_%d", len(m.tasks)+1)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(parentCtx)
 	task := &Task{
 		ID:               taskID,
 		SessionID:        sessionID,

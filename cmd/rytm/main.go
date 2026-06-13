@@ -15,7 +15,7 @@ import (
 )
 
 func ensureDaemonRunning() (net.Conn, error) {
-	conn, err := net.Dial("unix", ipc.SocketPath)
+	conn, err := net.Dial(ipc.IPCNetwork, ipc.IPCAddress)
 	if err == nil {
 		return conn, nil
 	}
@@ -39,15 +39,15 @@ func ensureDaemonRunning() (net.Conn, error) {
 		return nil, fmt.Errorf("failed to start daemon at %s: %w", daemonPath, err)
 	}
 
-	for i := 0; i < 10; i++ {
-		time.Sleep(time.Millisecond * 200)
-		conn, err = net.Dial("unix", ipc.SocketPath)
+	for i := 0; i < 15; i++ {
+		time.Sleep(time.Millisecond * 300)
+		conn, err = net.Dial(ipc.IPCNetwork, ipc.IPCAddress)
 		if err == nil {
 			return conn, nil
 		}
 	}
 
-	return nil, fmt.Errorf("daemon started but socket remains unreachable at %s", ipc.SocketPath)
+	return nil, fmt.Errorf("daemon started but remains unreachable at %s", ipc.IPCAddress)
 }
 
 func main() {

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Precompile regexes for yt-dlp stdout scanning to optimize performance and avoid allocation overhead.
@@ -51,7 +52,9 @@ func (m *Manager) downloadRaw(ctx context.Context, t *Task) (string, TrackMeta, 
 		"--print", "rytm_release_year:%(release_year)s",
 		"--no-simulate",
 	}
-	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
+	dlCtx, dlCancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer dlCancel()
+	cmd := exec.CommandContext(dlCtx, "yt-dlp", args...)
 	cmd.Dir = "./"
 	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8", "PYTHONUTF8=1")
 	t.mu.Lock()

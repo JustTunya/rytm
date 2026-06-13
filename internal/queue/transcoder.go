@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (m *Manager) transcodeWithMeta(ctx context.Context, rawPath, coverPath string, meta TrackMeta, outPath string, taskID string) error {
@@ -72,7 +73,9 @@ func (m *Manager) transcodeWithMeta(ctx context.Context, rawPath, coverPath stri
 		args = append(args, "-disposition:v:0", "attached_pic")
 	}
 	args = append(args, outPath)
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	transcodeCtx, transcodeCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer transcodeCancel()
+	cmd := exec.CommandContext(transcodeCtx, "ffmpeg", args...)
 	cmd.Dir = "./"
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(string(out)))
