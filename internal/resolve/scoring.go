@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	reNoise = regexp.MustCompile(`(?i)\s*[\(\[][^\]\)]*(official|video|audio|lyric|clip|hq|hd|remastered|mono|stereo)[^\]\)]*[\)\]]`)
-	reFeat  = regexp.MustCompile(`(?i)\s*feat\..*`)
-	rePunct = regexp.MustCompile(`[^\w\s]`)
+	reNoise  = regexp.MustCompile(`(?i)\s*[\(\[][^\]\)]*(official|video|audio|lyric|clip|hq|hd|remastered|mono|stereo|ep|single|explicit|deluxe|album)[^\]\)]*[\)\]]`)
+	reFeat   = regexp.MustCompile(`(?i)\s*feat\..*`)
+	reSuffix = regexp.MustCompile(`(?i)\s*-\s*(ep|single|album|deluxe)$`)
+	rePunct  = regexp.MustCompile(`[^\w\s]`)
 )
 
 type DefaultScoring struct{}
@@ -48,8 +49,8 @@ func (s DefaultScoring) scoreEntity(query string, queryWords []string, entity En
 		score += 100
 		debug.WriteString("Base(Song)=100 ")
 	case EntityAlbum:
-		score += 80
-		debug.WriteString("Base(Album)=80 ")
+		score += 95
+		debug.WriteString("Base(Album)=95 ")
 	case EntityVideo:
 		score += 60
 		debug.WriteString("Base(Video)=60 ")
@@ -59,16 +60,22 @@ func (s DefaultScoring) scoreEntity(query string, queryWords []string, entity En
 	}
 
 	normTitle := cleanText(entity.Title)
+	normTitleAndArtists := cleanText(strings.Join(entity.Artists, " ") + " " + entity.Title)
 
 	// 2. Exact Title Match
 	if query == normTitle {
 		score += 50
 		debug.WriteString("ExactTitle=50 ")
+	} else if normTitle != "" && strings.Contains(query, normTitle) {
+		// If the query contains the exact title (e.g. query is "Artist - Title", title is "Title")
+		// This avoids penalizing the official track which doesn't have the artist in the title field.
+		score += 40
+		debug.WriteString("TitleInQuery=40 ")
 	} else if len(queryWords) > 0 {
-		// 3. Partial Title Match (all query words in title)
+		// 3. Partial Title Match (all query words in title+artist)
 		allFound := true
 		for _, w := range queryWords {
-			if !strings.Contains(normTitle, w) {
+			if !strings.Contains(normTitleAndArtists, w) {
 				allFound = false
 				break
 			}
@@ -82,7 +89,7 @@ func (s DefaultScoring) scoreEntity(query string, queryWords []string, entity En
 	// 4. Exact Artist Match
 	for _, a := range entity.Artists {
 		normArtist := cleanText(a)
-		if strings.Contains(query, normArtist) {
+		if normArtist != "" && strings.Contains(query, normArtist) {
 			score += 30
 			debug.WriteString(fmt.Sprintf("ExactArtist(%s)=30 ", a))
 			break
@@ -101,26 +108,6 @@ func (s DefaultScoring) scoreEntity(query string, queryWords []string, entity En
 		debug.WriteString("Explicit=5 ")
 	}
 
-	// 7. Duration Alignment (for songs/videos)
-	// Typical song is 180s - 300s (3 to 5 mins). Bonus if within this range,
-	// and penalty if extremely long/short unless it's a playlist/album.
-	if (entity.Type == EntitySong || entity.Type == EntityVideo) && entity.DurationSec > 0 {
-		if entity.DurationSec >= 120 && entity.DurationSec <= 420 {
-			score += 10
-			debug.WriteString("DurationAlign=10 ")
-		} else if entity.DurationSec > 600 {
-			score -= 20
-			debug.WriteString("DurationPenalty(>10m)=-20 ")
-		}
-	}
-
-	// 8. Track Count Check for Albums (Filter out singles disguised as albums)
-	if entity.Type == EntityAlbum {
-		if entity.TrackCount == 1 {
-			score -= 30
-			debug.WriteString("SingleTrackAlbumPenalty=-30 ")
-		}
-	}
 
 	return math.Max(0, score), strings.TrimSpace(debug.String())
 }
@@ -128,6 +115,7 @@ func (s DefaultScoring) scoreEntity(query string, queryWords []string, entity En
 func cleanText(s string) string {
 	s = reNoise.ReplaceAllString(s, "")
 	s = reFeat.ReplaceAllString(s, "")
+	s = reSuffix.ReplaceAllString(s, "")
 	s = rePunct.ReplaceAllString(s, " ") // replace punctuation with spaces
 	s = strings.ToLower(s)
 	// collapse multiple spaces

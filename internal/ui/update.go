@@ -16,6 +16,19 @@ type errMsg error
 type downloadStartedMsg struct {
 	TaskID string
 }
+
+// resolutionConfidentMsg is sent when the resolver has high confidence — auto-queue.
+type resolutionConfidentMsg struct {
+	URL    string
+	Title  string
+	Artist string
+}
+
+// resolutionDisambiguateMsg is sent when the resolver needs user input.
+type resolutionDisambiguateMsg struct {
+	Candidates []ipc.ResolveCandidate
+}
+
 type statusUpdateMsg struct {
 	Tasks []ipc.TaskStatus
 }
@@ -41,7 +54,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 		case "esc":
-			if m.State == StateDashboard {
+			if m.State == StateDashboard || m.State == StateDisambiguation {
 				m.State = StateInput
 				m.TextInput.Focus()
 				m.TextInput.SetValue("")
@@ -54,16 +67,33 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.TextInput.Blur()
 				m.Err = nil
 				m.ScrollOffset = 0 // Reset scroll offset on new search
-				return m, sendDownloadCmd(m.SearchQuery)
+
+				// Determine if we should submit immediately or resolve first
+				if isDirectURL(m.SearchQuery) {
+					return m, sendSubmitURLCmd(m.SearchQuery)
+				}
+				return m, sendResolveCmd(m.SearchQuery)
+			}
+			if m.State == StateDisambiguation && len(m.DisambiguationItems) > 0 {
+				selected := m.DisambiguationItems[m.DisambiguationCursor]
+				m.State = StateSearching
+				m.DisambiguationItems = nil
+				return m, sendSubmitURLCmd(selected.URL)
 			}
 		case "up":
 			if m.State == StateDashboard && m.ScrollOffset > 0 {
 				m.ScrollOffset--
 			}
+			if m.State == StateDisambiguation && m.DisambiguationCursor > 0 {
+				m.DisambiguationCursor--
+			}
 			return m, nil
 		case "down":
 			if m.State == StateDashboard {
 				m.ScrollOffset++
+			}
+			if m.State == StateDisambiguation && m.DisambiguationCursor < len(m.DisambiguationItems)-1 {
+				m.DisambiguationCursor++
 			}
 			return m, nil
 		}
@@ -72,6 +102,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.State = StateDashboard
 		m.CurrentSessionID = msg.TaskID
 		return m, pollStatusCmd()
+
+	case resolutionConfidentMsg:
+		m.State = StateSearching
+		return m, sendSubmitURLCmd(msg.URL)
+
+	case resolutionDisambiguateMsg:
+		m.State = StateDisambiguation
+		m.DisambiguationCursor = 0
+		m.DisambiguationItems = make([]DisambiguationItem, 0, len(msg.Candidates))
+		for _, c := range msg.Candidates {
+			m.DisambiguationItems = append(m.DisambiguationItems, DisambiguationItem{
+				URL: c.URL, Title: c.Title, Artist: c.Artist, Album: c.Album,
+				Type: c.Type, Score: c.Score,
+			})
+		}
+		return m, nil
 
 	case statusUpdateMsg:
 		m.Tracks = make([]TrackItem, 0, len(msg.Tasks))
@@ -132,7 +178,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func sendDownloadCmd(query string) tea.Cmd {
+func sendResolveCmd(query string) tea.Cmd {
 	return func() tea.Msg {
 		// FIX 3: Use dynamic Windows/Linux socket path
 		conn, err := net.Dial("unix", ipc.SocketPath)
@@ -142,25 +188,64 @@ func sendDownloadCmd(query string) tea.Cmd {
 		defer conn.Close()
 
 		req := ipc.Request{
-			Command: ipc.CmdDownload,
+			Command: ipc.CmdResolve,
 			Query:   query,
 		}
 
 		if err := json.NewEncoder(conn).Encode(req); err != nil {
-			return errMsg(fmt.Errorf("failed to send download request: %w", err))
+			return errMsg(fmt.Errorf("failed to send resolve request: %w", err))
 		}
 
 		var resp ipc.Response
 		if err := json.NewDecoder(conn).Decode(&resp); err != nil {
-			return errMsg(fmt.Errorf("failed to decode download response: %w", err))
+			return errMsg(fmt.Errorf("failed to decode resolve response: %w", err))
 		}
 
 		if !resp.Success {
-			return errMsg(fmt.Errorf("download command failed: %s", resp.Error))
+			return errMsg(fmt.Errorf("resolve failed: %s", resp.Error))
+		}
+
+		if resp.Resolve != nil && resp.Resolve.Confident && len(resp.Resolve.Candidates) > 0 {
+			top := resp.Resolve.Candidates[0]
+			return resolutionConfidentMsg{URL: top.URL, Title: top.Title, Artist: top.Artist}
+		}
+		return resolutionDisambiguateMsg{Candidates: resp.Resolve.Candidates}
+	}
+}
+
+func sendSubmitURLCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		// FIX 3: Use dynamic Windows/Linux socket path
+		conn, err := net.Dial("unix", ipc.SocketPath)
+		if err != nil {
+			return errMsg(fmt.Errorf("failed to connect to rytmd: %w", err))
+		}
+		defer conn.Close()
+
+		req := ipc.Request{
+			Command: ipc.CmdSubmitURL,
+			Query:   url,
+		}
+
+		if err := json.NewEncoder(conn).Encode(req); err != nil {
+			return errMsg(fmt.Errorf("failed to send submit request: %w", err))
+		}
+
+		var resp ipc.Response
+		if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+			return errMsg(fmt.Errorf("failed to decode submit response: %w", err))
+		}
+
+		if !resp.Success {
+			return errMsg(fmt.Errorf("submit command failed: %s", resp.Error))
 		}
 
 		return downloadStartedMsg{TaskID: resp.TaskID}
 	}
+}
+
+func isDirectURL(query string) bool {
+	return len(query) > 4 && (query[:4] == "http")
 }
 
 func pollStatusCmd() tea.Cmd {

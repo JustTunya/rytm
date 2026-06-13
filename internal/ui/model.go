@@ -12,7 +12,18 @@ const (
 	StateInput SessionState = iota
 	StateSearching
 	StateDashboard
+	StateDisambiguation
 )
+
+// DisambiguationItem mirrors ipc.ResolveCandidate for UI display.
+type DisambiguationItem struct {
+	URL         string
+	Title       string
+	Artist      string
+	Album       string
+	Type        string // "Song", "Album", "Video", "Playlist"
+	Score       float64
+}
 
 type TrackItem struct {
 	TaskID           string
@@ -39,6 +50,10 @@ type Model struct {
 	CurrentSessionID string
 	WindowWidth      int
 	WindowHeight     int
+
+	// Disambiguation state
+	DisambiguationItems  []DisambiguationItem
+	DisambiguationCursor int
 }
 
 func InitialModel() Model {

@@ -44,6 +44,9 @@ func isPlaylistURL(query string) bool {
 	if strings.Contains(u.Path, "/album/") {
 		return true
 	}
+	if strings.Contains(u.Path, "/browse/") {
+		return true
+	}
 	return false
 }
 
@@ -79,35 +82,7 @@ func (m *Manager) Submit(query string) string {
 //  3. transcodeWithMeta — FFmpeg converts to AAC/m4a and injects all tags in
 //     the same pass where the volume filter is applied.
 func (m *Manager) runTask(ctx context.Context, t *Task) {
-	// ── Phase 0: Pre-fetch resolution ──────────────────────────────────
-	if m.resolver != nil && !isDirectURL(t.Query) {
-		t.SetStatus("Resolving", "")
-		result, err := m.resolver.Resolve(ctx, t.Query)
-		if err == nil {
-			t.mu.Lock()
-			t.ResolvedURL = result.URL
-			t.mu.Unlock()
-			if result.Entity.Title != "" {
-				t.SetTitle(result.Entity.Title)
-			}
-			if len(result.Entity.Artists) > 0 {
-				t.SetArtist(result.Entity.Artists[0])
-			}
-			// If the result is a multi-track entity (album/playlist), expand tracks
-			if result.IsMulti && len(result.Tracks) > 0 {
-				t.SetStatus("Done", "")
-				albumTitle := sanitizeFilename(result.Entity.Title)
-				if albumTitle == "" {
-					albumTitle = "Playlist"
-				}
-				for i, track := range result.Tracks {
-					m.SubmitTrack(track.URL(), albumTitle, i+1, t.SessionID)
-				}
-				return
-			}
-		}
-		// On resolution failure: log and fall through to yt-dlp ytsearch
-	}
+	// ── Phase 0 removed (Now handled by UI/Daemon via CmdResolve) ──
 
 	t.SetStatus("Queued", "")
 	select {
@@ -147,6 +122,23 @@ func (m *Manager) runTask(ctx context.Context, t *Task) {
 		default:
 			// Non-fatal: degrade gracefully — fall back to video title parsing.
 			meta = ytMeta
+		}
+	} else {
+		// Merge fallback metadata fields from yt-dlp if AcoustID/MusicBrainz is missing them.
+		if meta.Title == "" && ytMeta.Title != "" {
+			meta.Title = ytMeta.Title
+		}
+		if meta.Artist == "" && ytMeta.Artist != "" {
+			meta.Artist = ytMeta.Artist
+		}
+		if meta.Album == "" && ytMeta.Album != "" {
+			meta.Album = ytMeta.Album
+		}
+		if meta.Date == "" && ytMeta.Date != "" {
+			meta.Date = ytMeta.Date
+		}
+		if meta.TrackNum == "" && ytMeta.TrackNum != "" {
+			meta.TrackNum = ytMeta.TrackNum
 		}
 	}
 	if t.PlaylistTrackNum > 0 {

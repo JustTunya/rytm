@@ -22,6 +22,22 @@ var (
 	albumStyle  = lipgloss.NewStyle().Width(20)
 	statusStyle = lipgloss.NewStyle().Width(20)
 
+	// Disambiguation table column styles
+	disambTitleWidth  = 30
+	disambArtistWidth = 20
+	disambAlbumWidth  = 20
+	disambTypeWidth   = 10
+
+	disambTitleStyle  = lipgloss.NewStyle().Width(disambTitleWidth)
+	disambArtistStyle = lipgloss.NewStyle().Width(disambArtistWidth)
+	disambAlbumStyle  = lipgloss.NewStyle().Width(disambAlbumWidth)
+	disambTypeStyle   = lipgloss.NewStyle().Width(disambTypeWidth)
+
+	selectedRowStyle = lipgloss.NewStyle().
+		Background(lipgloss.Color("#2980b9")).
+		Foreground(lipgloss.Color("#ecf0f1")).
+		Bold(true)
+
 	// Loading Spinner Frames
 	spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 )
@@ -61,6 +77,41 @@ func (m Model) View() string {
 	case StateSearching:
 		doc.WriteString(fmt.Sprintf("Searching YouTube Music for: '%s'...\n\n", m.SearchQuery))
 		doc.WriteString(dimStyle.Render("Resolving pristine topic stream stream..."))
+
+	case StateDisambiguation:
+		doc.WriteString(fmt.Sprintf("Results for '%s':\n\n", m.SearchQuery))
+
+		// Column headers
+		header := disambTitleStyle.Render("Title") +
+			disambArtistStyle.Render("Artist") +
+			disambAlbumStyle.Render("Album") +
+			disambTypeStyle.Render("Type")
+		doc.WriteString(dimStyle.Render(header))
+		doc.WriteString("\n")
+
+		for i, item := range m.DisambiguationItems {
+			isSelected := i == m.DisambiguationCursor
+
+			title := truncate(item.Title, disambTitleWidth-2)
+			artist := truncate(item.Artist, disambArtistWidth-2)
+			album := truncate(item.Album, disambAlbumWidth-2)
+			typeStr := item.Type
+
+			row := disambTitleStyle.Render(title) +
+				disambArtistStyle.Render(artist) +
+				disambAlbumStyle.Render(album) +
+				disambTypeStyle.Render(typeStr)
+
+			if isSelected {
+				row = selectedRowStyle.Render(row)
+			}
+
+			doc.WriteString(row)
+			doc.WriteString("\n")
+		}
+
+		doc.WriteString("\n")
+		doc.WriteString(dimStyle.Render("[↑/↓] navigate | [enter] select | [esc] cancel"))
 
 	case StateDashboard:
 		doc.WriteString("Active Ingestion Queue:\n\n")
@@ -232,4 +283,16 @@ func renderPlaylistHeader(name string, doc *strings.Builder, dynamicTitleStyle l
 	header := numStyle.Render("#") + dynamicTitleStyle.Render("Title") + dynamicArtistStyle.Render("Artist") + dynamicAlbumStyle.Render("Album") + statusStyle.Render("Status")
 	doc.WriteString(dimStyle.Render(header))
 	doc.WriteString("\n")
+}
+
+
+
+func truncate(s string, maxLen int) string {
+	if maxLen < 5 {
+		maxLen = 5
+	}
+	if len(s) > maxLen {
+		return s[:maxLen-3] + "..."
+	}
+	return s
 }

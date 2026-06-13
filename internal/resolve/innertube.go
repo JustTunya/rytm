@@ -34,14 +34,75 @@ func NewInnerTubeProvider() *InnerTubeProvider {
 }
 
 func (p *InnerTubeProvider) Search(ctx context.Context, query string) (SearchResult, error) {
-	// Wait on rate limiter
-	if err := p.limiter.Wait(ctx); err != nil {
-		return SearchResult{}, fmt.Errorf("rate limiter wait: %w", err)
+	// 1. General search to get mixed entities (songs, albums, playlists, videos)
+	bodyBytes, err := p.searchWithPayload(ctx, query, "")
+	if err != nil {
+		return SearchResult{}, err
 	}
 
-	payload, err := buildSearchPayload(query)
+	generalEntities, err := parseSearchResponse(bodyBytes)
 	if err != nil {
-		return SearchResult{}, fmt.Errorf("build payload: %w", err)
+		return SearchResult{}, fmt.Errorf("parse response: %w", err)
+	}
+
+	// 2. Songs-filtered search to get detailed song entities (with album names)
+	// Param string "EgWKAQIIAWoKEAkQChADEAQQCg==" is for "Songs" filter on desktop WEB_REMIX
+	songBodyBytes, err := p.searchWithPayload(ctx, query, "EgWKAQIIAWoKEAkQChADEAQQCg==")
+	if err == nil {
+		songEntities, err := parseSearchResponse(songBodyBytes)
+		if err == nil {
+			// Map VideoID to parsed Album name
+			albumMap := make(map[string]string)
+			for _, entity := range songEntities {
+				if entity.Type == EntitySong && entity.VideoID != "" && entity.Album != "" {
+					albumMap[entity.VideoID] = entity.Album
+				}
+			}
+
+			// Update Album name on general search song entities
+			for i := range generalEntities {
+				if generalEntities[i].Type == EntitySong && generalEntities[i].VideoID != "" {
+					if albumName, exists := albumMap[generalEntities[i].VideoID]; exists {
+						generalEntities[i].Album = albumName
+					}
+				}
+			}
+
+			// Append any song from the filtered results that is not already present in general results
+			existingVideoIDs := make(map[string]bool)
+			for _, entity := range generalEntities {
+				if entity.VideoID != "" {
+					existingVideoIDs[entity.VideoID] = true
+				}
+			}
+			for _, entity := range songEntities {
+				if entity.VideoID != "" && !existingVideoIDs[entity.VideoID] {
+					generalEntities = append(generalEntities, entity)
+					existingVideoIDs[entity.VideoID] = true
+				}
+			}
+		}
+	}
+
+	if len(generalEntities) == 0 {
+		return SearchResult{}, ErrNoResults
+	}
+
+	return SearchResult{
+		Entities: generalEntities,
+		RawQuery: query,
+	}, nil
+}
+
+func (p *InnerTubeProvider) searchWithPayload(ctx context.Context, query string, params string) ([]byte, error) {
+	// Wait on rate limiter to space requests
+	if err := p.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter wait: %w", err)
+	}
+
+	payload, err := buildSearchPayload(query, params)
+	if err != nil {
+		return nil, fmt.Errorf("build payload: %w", err)
 	}
 
 	// InnerTube Context Timeout
@@ -65,45 +126,32 @@ func (p *InnerTubeProvider) Search(ctx context.Context, query string) (SearchRes
 
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return SearchResult{}, ErrTimeout
+			return nil, ErrTimeout
 		}
-		// Return typed rate limit err if that's what failed
 		if err.Error() == "rate limited (HTTP 429)" {
-			return SearchResult{}, ErrRateLimited
+			return nil, ErrRateLimited
 		}
-		return SearchResult{}, fmt.Errorf("http request: %w", err)
+		return nil, fmt.Errorf("http request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		if resp.StatusCode == http.StatusTooManyRequests {
-			return SearchResult{}, ErrRateLimited
+			return nil, ErrRateLimited
 		}
-		return SearchResult{}, fmt.Errorf("%w: HTTP %d - %s", ErrProviderFailed, resp.StatusCode, string(body))
+		return nil, fmt.Errorf("%w: HTTP %d - %s", ErrProviderFailed, resp.StatusCode, string(body))
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return SearchResult{}, fmt.Errorf("read body: %w", err)
+		return nil, fmt.Errorf("read body: %w", err)
 	}
 
-	entities, err := parseSearchResponse(bodyBytes)
-	if err != nil {
-		return SearchResult{}, fmt.Errorf("parse response: %w", err)
-	}
-
-	if len(entities) == 0 {
-		return SearchResult{}, ErrNoResults
-	}
-
-	return SearchResult{
-		Entities: entities,
-		RawQuery: query,
-	}, nil
+	return bodyBytes, nil
 }
 
-func buildSearchPayload(query string) ([]byte, error) {
+func buildSearchPayload(query string, params string) ([]byte, error) {
 	// Standard WEB_REMIX client context for YouTube Music InnerTube
 	reqBody := map[string]interface{}{
 		"context": map[string]interface{}{
@@ -115,6 +163,9 @@ func buildSearchPayload(query string) ([]byte, error) {
 			},
 		},
 		"query": query,
+	}
+	if params != "" {
+		reqBody["params"] = params
 	}
 	return json.Marshal(reqBody)
 }

@@ -34,12 +34,10 @@ type Entity struct {
 	Title        string
 	Artists      []string
 	Album        string
-	DurationSec  int    // Duration in seconds (0 if unknown)
 	IsExplicit   bool
 	IsOfficialMV bool   // Flagged as "Official Music Video"
 	ThumbnailURL string
 	Year         string
-	TrackCount   int    // Number of tracks (for albums/playlists)
 }
 
 // URL returns the canonical YouTube URL for this entity.

@@ -132,6 +132,9 @@ func (m *Manager) downloadRaw(ctx context.Context, t *Task) (string, TrackMeta, 
 	if ytMeta.Artist != "" {
 		t.SetArtist(ytMeta.Artist)
 	}
+	if ytMeta.Album != "" {
+		t.SetAlbum(ytMeta.Album)
+	}
 	// Optimize search by looking up expected extension patterns directly.
 	// This avoids costly and slow directory globbing of TempDir on Windows/large directories.
 	audioPath, findErr := findAudioFile(t.ID)

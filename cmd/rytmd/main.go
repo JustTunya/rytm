@@ -10,7 +10,10 @@ import (
 	"rytm/internal/ipc"
 	"rytm/internal/queue"
 	"rytm/internal/resolve"
+	"strings"
 	"syscall"
+	"context"
+	"time"
 )
 
 func main() {
@@ -83,11 +86,11 @@ func main() {
 			}
 		}
 
-		go handleConnection(conn, manager)
+		go handleConnection(conn, manager, resolver)
 	}
 }
 
-func handleConnection(conn net.Conn, mgr *queue.Manager) {
+func handleConnection(conn net.Conn, mgr *queue.Manager, resolver *resolve.Resolver) {
 	defer conn.Close()
 
 	decoder := json.NewDecoder(conn)
@@ -130,6 +133,50 @@ func handleConnection(conn net.Conn, mgr *queue.Manager) {
 				if !ok {
 					resp.Error = "task not found or already completed/cancelled"
 				}
+			}
+
+		case ipc.CmdResolve:
+			if req.Query == "" {
+				resp = ipc.Response{Success: false, Error: "missing query"}
+			} else {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				fullResult, err := resolver.ResolveAll(ctx, req.Query)
+				if err != nil {
+					resp = ipc.Response{Success: false, Error: fmt.Sprintf("resolve: %v", err)}
+				} else {
+					candidates := make([]ipc.ResolveCandidate, 0, len(fullResult.Candidates))
+					for _, sc := range fullResult.Candidates {
+						candidates = append(candidates, ipc.ResolveCandidate{
+							URL:         sc.Entity.URL(),
+							Title:       sc.Entity.Title,
+							Artist:      strings.Join(sc.Entity.Artists, ", "),
+							Album:       sc.Entity.Album,
+							Type:        sc.Entity.Type.String(),
+							Score:       sc.Score,
+						})
+					}
+					resp = ipc.Response{
+						Success: true,
+						Resolve: &ipc.ResolveResponse{
+							Confident:  fullResult.Confidence == resolve.ConfidenceHigh,
+							Candidates: candidates,
+						},
+					}
+				}
+			}
+
+		case ipc.CmdSubmitURL:
+			if req.Query == "" {
+				resp = ipc.Response{Success: false, Error: "missing url"}
+			} else {
+				taskID := mgr.Submit(req.Query)
+				// We inject the ResolvedURL right away if possible
+				if t, ok := mgr.GetTask(taskID); ok {
+					// We need to set it on the task struct, but it's simpler to let downloader.go use Query as URL since it's already a URL
+					_ = t
+				}
+				resp = ipc.Response{Success: true, TaskID: taskID}
 			}
 
 		default:
